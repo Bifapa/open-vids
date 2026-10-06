@@ -42,6 +42,10 @@ import {
   type RevertTurnRequest,
   type AnswerPermissionResponse,
   type AnswerStoryOfferResponse,
+  type AnswerVoicePilotRequest,
+  type AnswerVoicePilotResponse,
+  type AnswerVoiceSetupRequest,
+  type AnswerVoiceSetupResponse,
   type RevertTurnResponse,
   type SetJevApiKeyRequest,
   type SetProviderApiKeyRequest,
@@ -61,6 +65,7 @@ import {
 import { isAnswerPermissionResponse } from "./permissionGuards";
 import { isAnswerQuestionResponse } from "./questionGuards";
 import { isAnswerStoryOfferResponse } from "./storyOfferGuards";
+import { isAnswerVoicePilotResponse, isAnswerVoiceSetupResponse } from "./voiceChatGuards";
 import { t } from "../i18n";
 import { buildProjectApiPath } from "../utils/projectRouting";
 
@@ -142,6 +147,23 @@ export interface AgentClient {
     offerId: string,
     decision: StoryOfferDecision,
   ): Promise<AnswerStoryOfferResponse>;
+  /**
+   * The user's answer to the voice-setup card: the saved preset to use, or "Not now". The runtime sets the project's
+   * voice and resumes the waiting tool call; the response is the request in its new state.
+   */
+  answerVoiceSetup(
+    chatId: string,
+    turnId: string,
+    setupId: string,
+    answer: AnswerVoiceSetupRequest,
+  ): Promise<AnswerVoiceSetupResponse>;
+  /** The user's verdict on the pilot line of a voiceover: approve (the rest is generated) or change with a note. */
+  answerVoicePilot(
+    chatId: string,
+    turnId: string,
+    pilotId: string,
+    answer: AnswerVoicePilotRequest,
+  ): Promise<AnswerVoicePilotResponse>;
   /**
    * The user's answer to a question the agent asked mid-turn (an option or free text). The runtime resumes the
    * waiting tool call and answers the question in its new state.
@@ -519,6 +541,20 @@ export function createAgentClient(
         `/chats/${enc(chatId)}/turns/${enc(turnId)}/story-offers/${enc(offerId)}`,
         isAnswerStoryOfferResponse,
         { decision },
+      ),
+    answerVoiceSetup: (chatId, turnId, setupId, answer) =>
+      call(
+        "POST",
+        `/chats/${enc(chatId)}/turns/${enc(turnId)}/voice-setups/${enc(setupId)}`,
+        isAnswerVoiceSetupResponse,
+        answer,
+      ),
+    answerVoicePilot: (chatId, turnId, pilotId, answer) =>
+      call(
+        "POST",
+        `/chats/${enc(chatId)}/turns/${enc(turnId)}/voice-pilots/${enc(pilotId)}`,
+        isAnswerVoicePilotResponse,
+        answer,
       ),
     answerQuestion: (chatId, turnId, questionId, answer) =>
       call(

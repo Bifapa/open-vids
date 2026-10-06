@@ -172,6 +172,12 @@ function settleOpenPart(part: AssistantPart): AssistantPart {
   if (part.type === "question" && part.question.state === "pending") {
     return { ...part, question: { ...part.question, state: "expired" } };
   }
+  if (part.type === "voice-setup" && part.setup.state === "pending") {
+    return { ...part, setup: { ...part.setup, state: "expired" } };
+  }
+  if (part.type === "voice-pilot" && part.pilot.state === "pending") {
+    return { ...part, pilot: { ...part.pilot, state: "expired" } };
+  }
   return part;
 }
 
@@ -299,6 +305,32 @@ export function applyChatEvent(state: ChatState, event: ChatEvent): ChatState {
             type: "story-offer",
             id: event.offer.id,
             offer: event.offer,
+          }),
+        })),
+      };
+
+    case "voiceSetup.updated":
+      return {
+        ...base,
+        messages: mapAssistant(state.messages, event.messageId, (message) => ({
+          ...message,
+          parts: upsertPart(message.parts, {
+            type: "voice-setup",
+            id: event.setup.id,
+            setup: event.setup,
+          }),
+        })),
+      };
+
+    case "voicePilot.updated":
+      return {
+        ...base,
+        messages: mapAssistant(state.messages, event.messageId, (message) => ({
+          ...message,
+          parts: upsertPart(message.parts, {
+            type: "voice-pilot",
+            id: event.pilot.id,
+            pilot: event.pilot,
           }),
         })),
       };

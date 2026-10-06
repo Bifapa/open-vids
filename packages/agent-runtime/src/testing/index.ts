@@ -155,3 +155,4 @@ export {
   sampleSourcesView,
   trustedSource,
 } from "./research.js";
+export { FakeVoiceHost, sampleProvider, samplePreset, sampleTake } from "./voice.js";

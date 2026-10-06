@@ -12,6 +12,7 @@ import {
   type PermissionAction,
   type PermissionAsset,
   type PermissionRender,
+  type PermissionVoice,
   type PermissionState,
   type AgentId,
 } from "@hyperframes/agent-protocol";
@@ -32,6 +33,19 @@ function isPermissionAsset(value: unknown): value is PermissionAsset {
     typeof value.title === "string" &&
     (value.source === null || typeof value.source === "string") &&
     (value.license === null || typeof value.license === "string")
+  );
+}
+function isPermissionVoice(value: unknown): value is PermissionVoice {
+  return (
+    isRecord(value) &&
+    typeof value.provider === "string" &&
+    typeof value.model === "string" &&
+    typeof value.lines === "number" &&
+    Number.isFinite(value.lines) &&
+    typeof value.seconds === "number" &&
+    Number.isFinite(value.seconds) &&
+    (value.usdCost === null ||
+      (typeof value.usdCost === "number" && Number.isFinite(value.usdCost)))
   );
 }
 
@@ -60,7 +74,8 @@ export function isPermissionRequest(value: unknown): value is PermissionRequest 
     isOneOf<PermissionState>(PERMISSION_STATES, value.state) &&
     typeof value.requestedAt === "number" &&
     (value.asset === undefined || isPermissionAsset(value.asset)) &&
-    (value.render === undefined || isPermissionRender(value.render))
+    (value.render === undefined || isPermissionRender(value.render)) &&
+    (value.voice === undefined || isPermissionVoice(value.voice))
   );
 }
 

@@ -21,6 +21,10 @@ function mergeKey(event: ChatEvent): string | null {
       return `question:${event.messageId}:${event.question.id}`;
     case "storyOffer.updated":
       return `offer:${event.messageId}:${event.offer.id}`;
+    case "voiceSetup.updated":
+      return `voiceSetup:${event.messageId}:${event.setup.id}`;
+    case "voicePilot.updated":
+      return `voicePilot:${event.messageId}:${event.pilot.id}`;
     case "usage.updated":
       return `usage:${event.turnId}:${event.runId ?? ""}`;
     case "qa.updated":

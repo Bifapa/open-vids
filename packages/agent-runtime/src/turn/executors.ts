@@ -19,6 +19,8 @@ import type { ResearchAccess } from "../research/tools.js";
 import { TurnStory } from "../story/executor.js";
 import type { ActiveRun, TurnContext } from "./context.js";
 import { planProposalOffered, storyOfferOpen } from "./gates.js";
+import { VoiceBroker } from "../voice/broker.js";
+import { TurnVoice } from "../voice/executor.js";
 
 /** What the turn's executors were opened with, for the modules that build prompts and tool lists from them. */
 export interface TurnTools {
@@ -230,6 +232,39 @@ export async function openTurnTools(
         options: run.designOptions,
       })
     : null;
+  // Voiceover: the cards live in the main message of the turn, whatever agent asked, like questions and permissions.
+  const voiceHost = options.voice ? options.voice(scope) : null;
+  run.voice = voiceHost
+    ? new TurnVoice({
+        host: voiceHost,
+        turnId: run.turn.id,
+        turnSignal: signal,
+        enabled: setup.enabled,
+        permissions,
+        broker: new VoiceBroker({
+          getPreset: (id, answerSignal) => voiceHost.getPreset(id, answerSignal),
+          publishSetup: (voiceSetup) =>
+            ctx.chats
+              .emit(run.chatId, {
+                type: "voiceSetup.updated",
+                messageId: run.assistantMessage.id,
+                setup: voiceSetup,
+              })
+              .then(() => undefined),
+          publishPilot: (pilot) =>
+            ctx.chats
+              .emit(run.chatId, {
+                type: "voicePilot.updated",
+                messageId: run.assistantMessage.id,
+                pilot,
+              })
+              .then(() => undefined),
+          signal,
+          now: ctx.now,
+          ids: ctx.ids,
+        }),
+      })
+    : null;
   run.research = researchHost
     ? new TurnResearch({
         host: researchHost,
@@ -297,6 +332,7 @@ export async function openTurnTools(
     storyAction: run.storyAction,
     designAction: run.designAction,
     design: designHost !== null,
+    voice: voiceHost !== null,
     planClips: (plan) => ctx.active?.analysis?.planClips(plan),
   };
   return { editingHost, researchHost, researchAccess, availability };

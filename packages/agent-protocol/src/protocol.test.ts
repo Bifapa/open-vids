@@ -12,10 +12,14 @@ import {
   isOAuthLoginId,
   isOAuthLoginState,
   isProviderId,
+  isVoicePilotRequest,
+  isVoiceSetupRequest,
   isStoryOffer,
   normalizeChatIntent,
   parseAgentIntake,
   parseAnswerStoryOffer,
+  parseAnswerVoicePilotRequest,
+  parseAnswerVoiceSetupRequest,
   parseReference,
   parseRevertTurn,
   parseSetJevApiKey,
@@ -32,6 +36,8 @@ import {
   type ChatSummary,
   type OAuthLoginState,
   type PermissionRequest,
+  type VoicePilotRequest,
+  type VoiceSetupRequest,
   type StoryOffer,
   type TurnSummary,
 } from "./index.js";
@@ -183,6 +189,121 @@ describe("applyChatEvent", () => {
     const aborted = open?.messages[1];
     if (aborted?.role !== "assistant") throw new Error("the assistant message is missing");
     expect(aborted.parts[0]).toMatchObject({ permission: { state: "expired" } });
+  });
+
+  it("folds the voice setup and pilot cards into their parts and expires pending ones when the turn ends", () => {
+    const setup: VoiceSetupRequest = {
+      id: "vs-1",
+      agent: "director",
+      language: "en-US",
+      sampleText: "Hello.",
+      suggestion: "warm",
+      state: "pending",
+      requestedAt: 4,
+    };
+    const pilot: VoicePilotRequest = {
+      id: "vp-1",
+      agent: "audio",
+      lineId: "l1",
+      text: "Hello.",
+      file: "assets/voice/l1.wav",
+      start: 0,
+      end: 2,
+      remainingLines: 3,
+      remainingUsdCost: null,
+      state: "pending",
+      requestedAt: 6,
+    };
+    const fold = (events: Omit<ChatEvent, "seq" | "chatId" | "ts">[]) => {
+      const message = foldChatEvents(
+        [...log().slice(0, 2), ...events].map((event, index) => ({
+          ...event,
+          seq: index + 1,
+          chatId: "c1",
+          ts: 10 + index,
+        })),
+      )?.messages[1];
+      if (message?.role !== "assistant") throw new Error("the assistant message is missing");
+      return message.parts;
+    };
+
+    // An answer replaces the card in place.
+    expect(
+      fold([
+        { type: "voiceSetup.updated", messageId: "m2", setup },
+        { type: "voicePilot.updated", messageId: "m2", pilot },
+        {
+          type: "voiceSetup.updated",
+          messageId: "m2",
+          setup: { ...setup, state: "answered", presetId: "p1", presetName: "Warm", answeredAt: 5 },
+        },
+        {
+          type: "voicePilot.updated",
+          messageId: "m2",
+          pilot: { ...pilot, state: "changes", feedback: "slower", answeredAt: 7 },
+        },
+        { type: "turn.completed", turn: { ...turn, status: "completed", endedAt: 9 } },
+      ]),
+    ).toEqual([
+      {
+        type: "voice-setup",
+        id: "vs-1",
+        setup: { ...setup, state: "answered", presetId: "p1", presetName: "Warm", answeredAt: 5 },
+      },
+      {
+        type: "voice-pilot",
+        id: "vp-1",
+        pilot: { ...pilot, state: "changes", feedback: "slower", answeredAt: 7 },
+      },
+    ]);
+
+    // A card still pending cannot outlive its turn.
+    expect(
+      fold([
+        { type: "voiceSetup.updated", messageId: "m2", setup },
+        { type: "voicePilot.updated", messageId: "m2", pilot },
+        { type: "turn.aborted", turn: { ...turn, status: "aborted", endedAt: 9 } },
+      ]),
+    ).toMatchObject([
+      { type: "voice-setup", setup: { state: "expired" } },
+      { type: "voice-pilot", pilot: { state: "expired" } },
+    ]);
+  });
+
+  it("parses the answers to the voice cards and validates the cards as persisted", () => {
+    expect(parseAnswerVoiceSetupRequest({ presetId: "p1" })).toEqual({
+      ok: true,
+      value: { presetId: "p1" },
+    });
+    expect(parseAnswerVoiceSetupRequest({ decline: true })).toEqual({
+      ok: true,
+      value: { decline: true },
+    });
+    expect(parseAnswerVoiceSetupRequest({ presetId: "" }).ok).toBe(false);
+    expect(parseAnswerVoiceSetupRequest(null).ok).toBe(false);
+    expect(parseAnswerVoicePilotRequest({ decision: "approve" })).toEqual({
+      ok: true,
+      value: { decision: "approve" },
+    });
+    expect(parseAnswerVoicePilotRequest({ decision: "change", feedback: "  slower " })).toEqual({
+      ok: true,
+      value: { decision: "change", feedback: "slower" },
+    });
+    expect(parseAnswerVoicePilotRequest({ decision: "change" }).ok).toBe(false);
+    expect(parseAnswerVoicePilotRequest({ decision: "maybe" }).ok).toBe(false);
+    expect(
+      isVoiceSetupRequest({
+        id: "a",
+        agent: "audio",
+        language: null,
+        sampleText: "x",
+        suggestion: "",
+        state: "declined",
+        requestedAt: 1,
+      }),
+    ).toBe(true);
+    expect(isVoiceSetupRequest({ id: "a", state: "answered" })).toBe(false);
+    expect(isVoicePilotRequest({ id: "a", state: "pending" })).toBe(false);
   });
 
   it("folds a Story Mode offer into its part and keeps a pending one answerable after its turn ends", () => {

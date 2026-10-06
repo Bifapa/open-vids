@@ -32,7 +32,12 @@ describe("beta feature flags", () => {
   });
 
   it("list the staged features once each", () => {
-    expect([...BETA_FEATURES].sort()).toEqual(["designSystems", "projectMentions", "projectTabs"]);
+    expect([...BETA_FEATURES].sort()).toEqual([
+      "designSystems",
+      "projectMentions",
+      "projectTabs",
+      "voiceover",
+    ]);
     expect(new Set(BETA_FEATURES).size).toBe(BETA_FEATURES.length);
   });
 });

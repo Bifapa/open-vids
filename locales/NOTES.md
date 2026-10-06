@@ -1566,3 +1566,25 @@ could be a noun). Keys are listed by area; a key that is not here reads as it sa
 - `studio.design.update.restore` — Button shown when the project's design files are missing or damaged and the library can put them back (same version, nothing newer).
 - `studio.design.update.restoreEffect` — Small print under the Restore button: only files are copied.
 - `studio.design.video.loading` — Shown in the Create dialog's From a video source while the project's file list is still being read, instead of claiming there is no video.
+
+## home-voice
+
+- `settings.section.voice` — Settings section (nav item, window title and page heading): a voice-over (закадровый голос) made by text-to-speech. Beta feature. Same text as the Studio key of the same name.
+- `settings.voice.meta` — Counter in the heading of the provider list: how many providers are set up and can speak now, of all providers.
+- `settings.voice.badge.needsSetup` — Badge of the custom server: its address or model is missing.
+- `settings.voice.field.baseUrl.hint` — The OpenAI speech API is the text-to-speech interface of OpenAI; many local servers copy it.
+- `settings.voice.field.rules` — A free-text field: the user’s standing instructions for the AI agents that write voice-over lines.
+- `settings.voice.note.freeTier` — Keep the <terms> tags (a link to Google’s terms). Google may let human reviewers read content sent on the free tier; the legal point about the European Economic Area, Switzerland and the United Kingdom is from Google’s terms.
+- `settings.voice.note.catalogNeedsGoogleKey` — OpenRouter is a service name; Gemini is Google’s model. “Voice catalog” is a list of ready-made voices to choose from; “voice design” creates a new voice from a description.
+- `settings.voice.presets.empty` — A saved voice (a preset) is a provider, model, voice and delivery settings kept under a name.
+- `settings.voice.preset.noSample` — Tooltip of the disabled play button of a saved voice that has no sample audio.
+- `settings.voice.preset.confirmDelete` — Inline confirmation in place of the voice name; buttons: common.delete and common.cancel.
+
+## studio-voice
+
+- `voice.setup.defaultSample` — The phrase every voice sample speaks when the agent did not give one (voiceover = закадровая озвучка).
+- `voice.catalog.any` — First (empty) option of a voice catalog filter: {filter} is the filter's name (Gender, Accent…). Must not depend on grammatical gender in Russian.
+- `voice.cost.unknown` — Shown where a price would be when the provider's rate is not known. Used after 'Estimated cost:' (feminine in Russian).
+- `voice.chat.setup.ask` — {agent} is the agent's name (Main, Audio…), the sentence subject.
+- `voice.error.rate_limited.retry` — Russian needs one/few/many/other plural forms for seconds.
+- `chat.permission.voiceGeneration` — Permission card sentence. <service/> is replaced by the voice service's name (Gemini…).

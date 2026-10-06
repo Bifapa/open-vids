@@ -10,6 +10,8 @@ import {
   isProviderId,
   parseAnswerPermission,
   parseAnswerQuestion,
+  parseAnswerVoicePilotRequest,
+  parseAnswerVoiceSetupRequest,
   parseAnswerStoryOffer,
   parseCancelRun,
   parseCreateChat,
@@ -36,6 +38,7 @@ import type { FramesHost } from "./editing/frames.js";
 import type { StoryHost } from "./story/host.js";
 import type { DesignHost } from "./design/host.js";
 import type { ResearchHost } from "./research/host.js";
+import type { VoiceHost } from "./voice/host.js";
 import type { CrossProjectHost } from "./crossProject/host.js";
 import type { QaHost } from "./qa/host.js";
 import { RuntimeError } from "./errors.js";
@@ -78,6 +81,8 @@ export interface RuntimeAppOptions {
   crossProject?: (scope: ProjectScope) => CrossProjectHost;
   /** Opens the design host (design-system library, the project's attached system and extraction) of a request's project. */
   design?: (scope: ProjectScope) => DesignHost;
+  /** Opens the voice host (the user's voices, the project's script and takes, synthesis) of a request's project. */
+  voice?: (scope: ProjectScope) => VoiceHost;
   /** Global (per-user) agent settings shared by every project. */
   settings: AgentSettingsStore;
   token: string;
@@ -120,6 +125,7 @@ export function createRuntimeApp(options: RuntimeAppOptions): RuntimeApp {
     ...(options.frames && { frames: options.frames }),
     ...(options.crossProject && { crossProject: options.crossProject }),
     ...(options.design && { design: options.design }),
+    ...(options.voice && { voice: options.voice }),
     now,
     ...(ids && { ids }),
     ...(options.sessionIdleMs !== undefined && { sessionIdleMs: options.sessionIdleMs }),
@@ -498,6 +504,44 @@ export function createRuntimeApp(options: RuntimeAppOptions): RuntimeApp {
           context.req.param("offerId"),
           parsed.value.decision,
           context.req.raw.signal,
+        );
+      return context.json(response);
+    },
+  );
+
+  // The user's answer to a voice-setup card (a saved preset, or "Not now"): the waiting request_voice_setup call
+  // resumes with it.
+  app.post(
+    `${AGENT_RUNTIME_PREFIX}/chats/:chatId/turns/:turnId/voice-setups/:setupId`,
+    async (context) => {
+      const parsed = parseAnswerVoiceSetupRequest(await readBody(context));
+      if (!parsed.ok) throw new RuntimeError("invalid_request", parsed.message, 400);
+      const response = await context
+        .get("project")
+        .turns.answerVoiceSetup(
+          context.req.param("chatId"),
+          context.req.param("turnId"),
+          context.req.param("setupId"),
+          parsed.value,
+        );
+      return context.json(response);
+    },
+  );
+
+  // The user's verdict on the pilot line of a voiceover generation ("Continue" / "Change"): the waiting
+  // generate_voiceover call resumes with it.
+  app.post(
+    `${AGENT_RUNTIME_PREFIX}/chats/:chatId/turns/:turnId/voice-pilots/:pilotId`,
+    async (context) => {
+      const parsed = parseAnswerVoicePilotRequest(await readBody(context));
+      if (!parsed.ok) throw new RuntimeError("invalid_request", parsed.message, 400);
+      const response = await context
+        .get("project")
+        .turns.answerVoicePilot(
+          context.req.param("chatId"),
+          context.req.param("turnId"),
+          context.req.param("pilotId"),
+          parsed.value,
         );
       return context.json(response);
     },

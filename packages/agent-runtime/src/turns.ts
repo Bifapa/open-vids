@@ -15,6 +15,10 @@ import {
   type DeleteChatResponse,
   type MessageReference,
   type PermissionDecision,
+  type AnswerVoicePilotRequest,
+  type AnswerVoicePilotResponse,
+  type AnswerVoiceSetupRequest,
+  type AnswerVoiceSetupResponse,
   type RevertMode,
   type RevertTurnResponse,
   type StartTurnRequest,
@@ -198,6 +202,7 @@ export class TurnRunner {
       analysis: null,
       story: null,
       design: null,
+      voice: null,
       research: null,
       crossProject: null,
       crossProjectOffered: false,
@@ -419,6 +424,34 @@ export class TurnRunner {
     const run = this.activeRunOf(chatId, turnId);
     if (!run.questions) throw new RuntimeError("turn_not_active", "Turn is not active", 409);
     return { question: await run.questions.answer(questionId, answer) };
+  }
+
+  /**
+   * The user's answer to a voice-setup card (a saved preset, or "Not now"): the waiting `request_voice_setup` call
+   * resumes with it. A preset that does not exist is `invalid_request` (the card stays pending); a card that is no
+   * longer pending, or a turn without a voice host, is `turn_not_active`.
+   */
+  async answerVoiceSetup(
+    chatId: string,
+    turnId: string,
+    setupId: string,
+    answer: AnswerVoiceSetupRequest,
+  ): Promise<AnswerVoiceSetupResponse> {
+    const run = this.activeRunOf(chatId, turnId);
+    if (!run.voice) throw new RuntimeError("turn_not_active", "Turn is not active", 409);
+    return { setup: await run.voice.broker.answerSetup(setupId, answer) };
+  }
+
+  /** The user's verdict on the pilot line of a voiceover generation: the waiting `generate_voiceover` call resumes. */
+  async answerVoicePilot(
+    chatId: string,
+    turnId: string,
+    pilotId: string,
+    answer: AnswerVoicePilotRequest,
+  ): Promise<AnswerVoicePilotResponse> {
+    const run = this.activeRunOf(chatId, turnId);
+    if (!run.voice) throw new RuntimeError("turn_not_active", "Turn is not active", 409);
+    return { pilot: await run.voice.broker.answerPilot(pilotId, answer) };
   }
 
   /** The user stops one delegated run of the running turn; the turn and the other runs go on. */

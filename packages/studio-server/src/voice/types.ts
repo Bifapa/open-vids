@@ -15,13 +15,16 @@ import type {
 } from "@hyperframes/agent-protocol";
 import type { VoicePriceTerms } from "./pricing.js";
 
+/** The fetch the connectors use: the call signature only (Bun's `typeof fetch` also carries `preconnect`). */
+export type VoiceFetch = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
+
 /** What a connector needs to call its provider. The key is only ever passed here, never logged or returned. */
 export interface ConnectorContext {
   provider: VoiceProviderInfo;
   /** null when the provider has no key (a custom server without one). */
   apiKey: string | null;
   signal: AbortSignal;
-  fetch: typeof fetch;
+  fetch: VoiceFetch;
 }
 
 /** One synthesis call. `text` is the speaker text (dialect tags included); `style` goes where the dialect says. */

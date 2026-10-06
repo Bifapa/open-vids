@@ -13,6 +13,7 @@ import { changesProject, intentRefusal, savesWebsiteFiles } from "../intent.js";
 import { qaPhaseRefusal } from "../qa/phase.js";
 import { isQaToolName } from "../qa/tools.js";
 import { isResearchToolName } from "../research/tools.js";
+import { isVoiceToolName } from "../voice/tools.js";
 import {
   STORY_TOOL_NAMES,
   isStoryToolName,
@@ -145,6 +146,11 @@ async function dispatchToolCall(
     if (!allowed.some((tool) => tool === name))
       return refuse(`${name} is not available to you in this turn.`);
     return run.design.execute(name, args, signal);
+  }
+  if (isVoiceToolName(name)) {
+    if (!run.voice) return refuse("Voiceover is not available in this runtime.");
+    if (run.designAction !== null) return refuse(DESIGN_TURN_REFUSAL);
+    return run.voice.execute(caller, name, args, signal, progress);
   }
   if (run.designAction !== null && writesTimeline(name)) return refuse(DESIGN_TURN_REFUSAL);
   if (!timelineWritesAllowed({ mode: run.mode, action: run.storyAction }) && writesTimeline(name))

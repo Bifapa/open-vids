@@ -32,6 +32,7 @@ import type {
   TurnSummary,
 } from "./types.js";
 import type { ExecutionQuality } from "./qa.js";
+import type { VoicePilotRequest, VoiceSetupRequest } from "./voice.js";
 
 /**
  * The OpenVids Agent Runtime HTTP API.
@@ -245,6 +246,25 @@ export interface AnswerQuestionRequest {
 
 export interface AnswerQuestionResponse {
   question: QuestionRequest;
+}
+
+/**
+ * `POST /v1/chats/:chatId/turns/:turnId/voice-setups/:setupId` — the user's answer to a voice-setup card: the
+ * saved preset to use (`{ presetId }`) or `{ decline: true }` ("Not now"). Body: `AnswerVoiceSetupRequest`
+ * (voice.ts). The waiting `request_voice_setup` call continues. An expired or answered card is refused (409
+ * `turn_not_active`), an unknown preset 400 `invalid_request`.
+ */
+export interface AnswerVoiceSetupResponse {
+  setup: VoiceSetupRequest;
+}
+
+/**
+ * `POST /v1/chats/:chatId/turns/:turnId/voice-pilots/:pilotId` — the user's verdict on the pilot line: approve (the
+ * rest is generated) or change with a note for the agent. Body: `AnswerVoicePilotRequest` (voice.ts). A pilot that is
+ * no longer pending is refused (409 `turn_not_active`).
+ */
+export interface AnswerVoicePilotResponse {
+  pilot: VoicePilotRequest;
 }
 
 /**

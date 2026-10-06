@@ -6,7 +6,12 @@ import {
 } from "@hyperframes/agent-protocol";
 import type { BackendSession, HostTool, OpenBackendSessionInput } from "../backend.js";
 import type { TurnAgentSetup } from "../agents/orchestrator.js";
-import { directorInstructions, jevInstructions, specialistInstructions } from "../agents/roles.js";
+import {
+  directorInstructions,
+  jevInstructions,
+  specialistInstructions,
+  type RoleOptions,
+} from "../agents/roles.js";
 import { buildHostTools, type ToolAvailability } from "../agents/tools.js";
 import type { RunSlot, TurnContext } from "./context.js";
 import { askBeforeLockedEdits, fileWriteRefusal, noteFileWrite } from "./gates.js";
@@ -64,10 +69,14 @@ export function stableHostTools(
   return [...merged.values()];
 }
 
-function instructionsOf(agent: AgentId, enabled: readonly SpecialistId[], design: boolean): string {
-  if (agent === "director") return directorInstructions(enabled, { design });
+function instructionsOf(
+  agent: AgentId,
+  enabled: readonly SpecialistId[],
+  options: RoleOptions,
+): string {
+  if (agent === "director") return directorInstructions(enabled, options);
   if (agent === "jev") return jevInstructions();
-  return specialistInstructions(agent, { design });
+  return specialistInstructions(agent, options);
 }
 
 /** The run a specialist session is opened for: `parallel` is an additional, ephemeral session of a busy specialist. */
@@ -93,7 +102,10 @@ export async function agentSession(
   const hostTools = stableHostTools(agent, availability, (name, args, signal, progress) =>
     dispatchTool(ctx, chatId, agent, name, args, signal, progress, slot.runId),
   );
-  const instructions = instructionsOf(agent, availability.enabled, availability.design === true);
+  const instructions = instructionsOf(agent, availability.enabled, {
+    design: availability.design === true,
+    voice: availability.voice === true,
+  });
   const contextHash = await ctx.backend.contextHash?.(ctx.chats.scope.projectDir);
   const parallel = run?.parallel === true;
   const open = async (): Promise<OpenBackendSessionInput> => ({

@@ -6,6 +6,8 @@ import { Trans, formatDuration, useTranslation } from "../../i18n";
 import { Button, Tooltip, cn } from "../ui";
 import { chatAgentName } from "./AgentMonogram";
 import { chatMeasureWide, noteBox, noteBoxWarn } from "./chatStyles";
+import { voiceProviderName } from "../../voice/voiceProviderNames";
+import { PermissionVoiceFacts } from "./PermissionVoiceFacts";
 import { KIND_VIEWS, SENTENCE_KEYS, STATE_ICONS, STATE_TONES } from "./permissionKinds";
 
 const NAMED = "font-medium text-fg [overflow-wrap:anywhere]";
@@ -79,6 +81,21 @@ function LongRenderSentence({ request }: { request: PermissionRequest }) {
   );
 }
 
+/** "<agent> wants to generate a voiceover with <service>": the service when the request names one. */
+function VoiceGenerationSentence({ request }: { request: PermissionRequest }) {
+  const voice = request.voice;
+  return (
+    <Trans
+      i18nKey="chat.permission.voiceGeneration"
+      values={{ agent: chatAgentName(request.agent), shape: voice ? "named" : "none" }}
+      components={{
+        b: <b className="font-medium text-fg" />,
+        service: <b className={NAMED}>{voice ? voiceProviderName(voice.provider) : ""}</b>,
+      }}
+    />
+  );
+}
+
 function WebsiteSentence({ request }: { request: PermissionRequest }) {
   return (
     <Trans
@@ -102,6 +119,8 @@ function RequestSentence({ request }: { request: PermissionRequest }) {
       return <AssetSentence request={request} i18nKey="chat.permission.assetImport" />;
     case "long_render":
       return <LongRenderSentence request={request} />;
+    case "voice_generation":
+      return <VoiceGenerationSentence request={request} />;
     case "read_linked_pages":
     case "website_full_access":
       return <WebsiteSentence request={request} />;
@@ -184,6 +203,7 @@ export function PermissionCard({
             : t("chat.permission.licenseUnknown")}
         </p>
       )}
+      {open && current.voice && <PermissionVoiceFacts voice={current.voice} />}
       {open && view.detail.type === "setting" && (
         <div
           data-testid="permission-setting"

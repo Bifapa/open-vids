@@ -1,5 +1,6 @@
 import { AGENT_DISPLAY_NAMES, type SpecialistId } from "@hyperframes/agent-protocol";
 import { DESIGN_DIRECTOR, DESIGN_SPECIALIST } from "../design/prompt.js";
+import { VOICE_AUDIO, VOICE_DIRECTOR } from "../voice/prompt.js";
 import { FRAMES_ROLE_PROMPT } from "../editing/frames.tools.js";
 import { CROSS_PROJECT_ROLE_PROMPT } from "../crossProject/tools.js";
 import { disabledSpecialists } from "./inherit.js";
@@ -106,7 +107,7 @@ const SPECIALIST_STORY: Record<SpecialistId, string> = {
 const BUG_REPORT_DIRECTOR = `Possible OpenVids bugs: when a tool or a specialist fails in a way that looks like a defect of OpenVids itself rather than of the request — an internal or unexpected error, a tool or program the app should have reported missing (for example "ffprobe not found"), the same failure again after a reasonable retry, or results that contradict what the editor shows — finish whatever can still be done, then tell the user plainly what did not work and suggest sending a bug report from the app: the "Report a problem" button (the bug icon at the top right of the editor or the Projects page) or Help › Report a Problem. Say in one line what to describe (what they asked, what failed, the error text). Suggest it once per turn, only for failures like these: not for missing or deleted user files, unsupported requests, the user's own decisions, or model-provider errors such as a missing API key, rate limits or quota.`;
 
 /** What a specialist's work consists of, for the Director to do when that specialist is off: tools and working rules. */
-function inheritedWork(id: SpecialistId): string {
+function inheritedWork(id: SpecialistId, options: RoleOptions): string {
   // The Director's own text already has these blocks; they are not repeated per specialist.
   const withoutShared = (text: string) =>
     text
@@ -117,6 +118,7 @@ function inheritedWork(id: SpecialistId): string {
   const sections = [
     `${AGENT_DISPLAY_NAMES[id]} is off in this chat: you do its work yourself (${SPECIALIST_FOCUS[id]}). Its working rules (the team block of each turn names the tools you have for it):`,
     withoutShared(SPECIALIST_TOOLING[id]),
+    ...(id === "audio" && options.voice === true ? [VOICE_AUDIO] : []),
     // The read-only reading lines of the other specialists repeat what the Director already knows.
     ...(id === "editor" || id === "vision" ? [SPECIALIST_ANALYSIS[id]] : []),
     ...(id === "vision" ? [] : [withoutShared(SPECIALIST_STORY[id])]),
@@ -124,9 +126,11 @@ function inheritedWork(id: SpecialistId): string {
   return sections.join("\n");
 }
 
-/** What differs between runtimes: Design Systems is on only when the runtime has a design host (the beta flag). */
+/** What differs between runtimes: Design Systems and Voiceover are on only when the runtime has their host (the beta flag). */
 export interface RoleOptions {
   design?: boolean;
+  /** The runtime has a voice host (Voiceover is on, the beta flag): the agents that speak get voiceover duties. */
+  voice?: boolean;
 }
 
 export function directorInstructions(
@@ -136,7 +140,7 @@ export function directorInstructions(
   const off = disabledSpecialists(enabled);
   const inherited =
     off.length > 0
-      ? `\n\nWork of the specialists that are off in this chat: it is yours. You get their tools in addition to your own (the same turn rules apply to you as to them) and follow their working rules; never delegate to them.\n\n${off.map(inheritedWork).join("\n\n")}`
+      ? `\n\nWork of the specialists that are off in this chat: it is yours. You get their tools in addition to your own (the same turn rules apply to you as to them) and follow their working rules; never delegate to them.\n\n${off.map((id) => inheritedWork(id, options)).join("\n\n")}`
       : "";
   return `You are the OpenVids Director, an autonomous video-editing Director working directly in the user's project. ${PROJECT_RULES}
 
@@ -165,7 +169,7 @@ ${RESEARCH_DIRECTOR}
 
 ${WEBSITE_DIRECTOR}
 
-${options.design === true ? `${DESIGN_DIRECTOR}\n\n` : ""}${QA_DIRECTOR}${inherited}
+${options.design === true ? `${DESIGN_DIRECTOR}\n\n` : ""}${options.voice === true ? `${VOICE_DIRECTOR}\n\n` : ""}${QA_DIRECTOR}${inherited}
 
 Model routing: a specialist runs on its configured model. You may pass another model only when it is listed as allowed for that specialist, and you may lower (never raise) its thinking effort for a simple task.
 
@@ -179,7 +183,7 @@ export function specialistInstructions(id: SpecialistId, options: RoleOptions = 
 
 You receive tasks from the Director, who coordinates the work with the user; you never talk to the user directly. Do exactly the task you were given, stay within your domain, and do not start unrelated work. If the task cannot be done as written, do the closest reasonable thing and say why.
 
-${SPECIALIST_TOOLING[id]}
+${SPECIALIST_TOOLING[id]}${id === "audio" && options.voice === true ? `\n${VOICE_AUDIO}` : ""}
 
 ${SPECIALIST_ANALYSIS[id]}
 

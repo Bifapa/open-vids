@@ -7,6 +7,7 @@ import type {
   PermissionKind,
   PermissionRender,
   PermissionRequest,
+  PermissionVoice,
   WebsiteGrantAccess,
 } from "@hyperframes/agent-protocol";
 import { RuntimeError, errorMessage } from "./errors.js";
@@ -16,7 +17,11 @@ import type { ResearchHost } from "./research/host.js";
 const REVOKE_TIMEOUT_MS = 10_000;
 
 /** Kinds whose card offers only "Allow once" and "Don't allow": no setting stands behind them. */
-const ONCE_ONLY_KINDS: readonly PermissionKind[] = ["long_render", "restricted_asset"];
+const ONCE_ONLY_KINDS: readonly PermissionKind[] = [
+  "long_render",
+  "restricted_asset",
+  "voice_generation",
+];
 
 /** Kinds that ask for one of the user's Websites settings and are answered per site. */
 const WEBSITE_KINDS: readonly PermissionKind[] = ["read_linked_pages", "website_full_access"];
@@ -33,6 +38,8 @@ export interface PermissionAsk {
   asset?: PermissionAsset;
   /** `long_render` only: the composition and its length. */
   render?: PermissionRender;
+  /** `voice_generation` only: the provider, model, lines, length and estimated cost of the generation. */
+  voice?: PermissionVoice;
   /** `restricted_asset` only: which asset this is (its candidate id or URL); each asset is asked on its own. */
   key?: string;
 }
@@ -171,6 +178,7 @@ export class PermissionBroker {
       ...((input.kind === "asset_download" || input.kind === "restricted_asset") &&
         input.asset !== undefined && { asset: input.asset }),
       ...(input.kind === "long_render" && input.render !== undefined && { render: input.render }),
+      ...(input.kind === "voice_generation" && input.voice !== undefined && { voice: input.voice }),
     };
     // The turn is already ending: nothing would expire a new pending request, so it answers as expired at once.
     if (this.closed) return { ...request, state: "expired" };

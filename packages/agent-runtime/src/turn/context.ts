@@ -32,6 +32,7 @@ import type { SessionManager } from "../sessionManager.js";
 import type { AgentSettingsStore } from "../settings.js";
 import type { TurnStory } from "../story/executor.js";
 import type { TurnDesign } from "../design/executor.js";
+import type { TurnVoice } from "../voice/executor.js";
 import type { FileChatStore } from "../store/index.js";
 import type { StreamTimerApi, StreamTimerHandle } from "../turnStream.js";
 import type { TurnRunnerOptions } from "../turnSupport.js";
@@ -66,6 +67,11 @@ export interface ActiveRun {
   story: TurnStory | null;
   /** The turn's design tools (the design library, attach); closed (in-flight saves awaited) before the checkpoint ends. */
   design: TurnDesign | null;
+  /**
+   * The turn's voiceover tools and the cards they wait on (voice setup, pilot); the cards expire at the turn's end and
+   * running generations are cancelled and awaited before the checkpoint ends. Null when the runtime has no voice host.
+   */
+  voice: TurnVoice | null;
   /** The turn's research tools; closed (in-flight imports and resolutions awaited) before the checkpoint ends. */
   research: TurnResearch | null;
   /**

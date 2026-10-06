@@ -11,6 +11,7 @@ import type { FramesHost } from "./editing/frames.js";
 import type { CrossProjectHost } from "./crossProject/host.js";
 import type { QaHost } from "./qa/host.js";
 import type { StreamTimerApi } from "./turnStream.js";
+import type { VoiceHost } from "./voice/host.js";
 
 export interface TurnRunnerOptions {
   now?: () => number;
@@ -65,6 +66,12 @@ export interface TurnRunnerOptions {
    * the production runtime always provides it.
    */
   crossProject?: (scope: ProjectScope) => CrossProjectHost;
+  /**
+   * Opens the voice host (the user's voice providers and saved voices, the project's script and takes, synthesis) of a
+   * project. Without it the agents get no voice tools and their prompts say nothing about voiceover; the production
+   * runtime provides it only when the beta feature is on.
+   */
+  voice?: (scope: ProjectScope) => VoiceHost;
   /**
    * How long the Director's model may stay silent (no event at all, no tool of its own running) before the turn is
    * stopped with a clear error (default 10 minutes). Delegated runs have their own watchdog.

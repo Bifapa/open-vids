@@ -4,6 +4,7 @@ import { EDITING_TOOL_NAMES } from "../editing/tools.js";
 import { RESEARCH_TOOL_NAMES } from "../research/tools.js";
 import { CROSS_PROJECT_TOOL_NAMES } from "../crossProject/tools.js";
 import { STORY_TOOL_NAMES } from "../story/tools.js";
+import { VOICE_TOOL_NAMES } from "../voice/tools.js";
 import { savesWebsiteFiles } from "../intent.js";
 import type { QaPhase } from "./loop.js";
 
@@ -39,6 +40,10 @@ export const HEAVY_ANALYSIS: Record<string, true> = {
  * reports; in the final prompt the Director only reports.
  */
 export function qaPhaseRefusal(phase: QaPhase, tool: string, args?: unknown): string | null {
+  // Voiceover asks the user and costs them money: nothing of the kind happens while QA checks the result.
+  if (phase !== null && (tool === VOICE_TOOL_NAMES.setup || tool === VOICE_TOOL_NAMES.generate)) {
+    return `Render QA is checking the result: ${tool} is not available now. Finish the corrections or the final report; a voiceover is made in a turn of its own.`;
+  }
   if (phase === "final" && (CHANGES_PROJECT[tool] || savesWebsiteFiles(tool, args))) {
     return `Render QA is over and the Director is writing the final report: ${tool} is refused now. Nothing may be edited, delegated, imported, built or rendered any more; report what was done and what QA found.`;
   }

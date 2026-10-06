@@ -39,6 +39,7 @@ import type {
   EngineAudio,
   EngineSynthesisInput,
   VoiceConnectorImpl,
+  VoiceFetch,
 } from "./types.js";
 
 /** The engine as the project layer sees it. */
@@ -67,7 +68,7 @@ export interface VoiceEngine {
 export interface VoiceEngineOptions {
   /** The voice directory (default {@link voiceDir}). */
   dir?: string;
-  fetch?: typeof fetch;
+  fetch?: VoiceFetch;
   now?: () => number;
   /** The ffprobe runner of the duration probe. */
   probe?: FfprobeRunner;
@@ -139,7 +140,7 @@ export class VoiceEngineImpl implements VoiceEngine {
   readonly presets: VoicePresetStore;
   readonly cache: VoiceCache;
   readonly pricing: VoicePricing;
-  private readonly fetchImpl: typeof fetch;
+  private readonly fetchImpl: VoiceFetch;
   private readonly now: () => number;
   private readonly connectors: Record<VoiceConnector, VoiceConnectorImpl>;
   private readonly inflight = new Map<string, Job>();

@@ -5,6 +5,7 @@ import { STORY_TOOL_NAMES } from "./story/tools.js";
 import { DESIGN_TOOL_NAMES } from "./design/tools.js";
 import { RESEARCH_TOOL_NAMES, websiteFileMode } from "./research/tools.js";
 import { CROSS_PROJECT_TOOL_NAMES } from "./crossProject/tools.js";
+import { VOICE_TOOL_NAMES } from "./voice/tools.js";
 
 /**
  * Tools that change the project or produce output from it: editing the timeline, rendering, building a rough cut,
@@ -24,6 +25,9 @@ const PROJECT_CHANGING_TOOLS: Readonly<Record<string, true>> = {
   [RESEARCH_TOOL_NAMES.import]: true,
   [RESEARCH_TOOL_NAMES.resolve]: true,
   [CROSS_PROJECT_TOOL_NAMES.import]: true,
+  // Voiceover sets the project's voice and writes takes and audio files (and costs the user money).
+  [VOICE_TOOL_NAMES.setup]: true,
+  [VOICE_TOOL_NAMES.generate]: true,
   // read_website and get_website_file are not listed: their read modes change nothing. Their save modes are gated by
   // {@link savesWebsiteFiles}; the executor itself refuses them outside Edit turns.
   [RESEARCH_TOOL_NAMES.record]: true,

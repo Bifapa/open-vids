@@ -6,6 +6,8 @@ import { cn } from "../ui/cn";
 import { StatusDot } from "../ui/Status";
 import { PLAN_STATUS_LABELS } from "./agentLabels";
 import { chatAgentName } from "./AgentMonogram";
+import { usePlanVoiceDialect } from "./usePlanVoiceDialect";
+import { VoiceTaggedText } from "./VoiceTaggedText";
 
 /** What the plan proposal's buttons need: busy, whether the proposal is out of date, why they are disabled. */
 export interface PlanApproval {
@@ -52,6 +54,7 @@ export function PlanStepList({
   className?: string;
 }) {
   const { t } = useTranslation();
+  const dialect = usePlanVoiceDialect(steps);
   return (
     <ol id={id} className={cn("grid gap-px", className)}>
       {steps.map((step) => (
@@ -66,7 +69,9 @@ export function PlanStepList({
           <span aria-hidden className="inline-flex h-4 w-3.5 shrink-0 items-center justify-center">
             <StepMark status={step.status} />
           </span>
-          <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">{step.title}</span>
+          <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">
+            <VoiceTaggedText text={step.title} dialect={dialect} />
+          </span>
           <span className="sr-only">{t(PLAN_STATUS_LABELS[step.status])}</span>
           {step.agent && step.agent !== "director" && (
             <span className="shrink-0 text-xs font-normal text-fg-3">

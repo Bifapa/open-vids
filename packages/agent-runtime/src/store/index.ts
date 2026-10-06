@@ -13,7 +13,13 @@ import {
 } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
 import type { ChatEvent, ChatState, ChatSummary, SpecialistId } from "@hyperframes/agent-protocol";
-import { foldChatEvents, isRecord, isStoryOffer } from "@hyperframes/agent-protocol";
+import {
+  foldChatEvents,
+  isRecord,
+  isStoryOffer,
+  isVoicePilotRequest,
+  isVoiceSetupRequest,
+} from "@hyperframes/agent-protocol";
 import { RuntimeError } from "../errors.js";
 import { LockBusyError, takeLock } from "../processLock.js";
 import { readForkedAt, retireCheckpointsBefore } from "./forkMarker.js";
@@ -362,6 +368,10 @@ function isChatEvent(value: unknown): value is ChatEvent {
       return typeof value.messageId === "string" && isRecord(value.permission);
     case "storyOffer.updated":
       return typeof value.messageId === "string" && isStoryOffer(value.offer);
+    case "voiceSetup.updated":
+      return typeof value.messageId === "string" && isVoiceSetupRequest(value.setup);
+    case "voicePilot.updated":
+      return typeof value.messageId === "string" && isVoicePilotRequest(value.pilot);
     case "message.completed":
       return typeof value.messageId === "string" && typeof value.status === "string";
     case "checkpoint.updated":

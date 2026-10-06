@@ -6,6 +6,7 @@
  * depends on this package only.
  */
 
+import type { VoicePilotPart, VoiceSetupPart } from "./voice.js";
 import type {
   ExecutionBudget,
   ExecutionQuality,
@@ -907,6 +908,7 @@ export const PERMISSION_KINDS = [
   "asset_download",
   "long_render",
   "restricted_asset",
+  "voice_generation",
 ] as const;
 export type PermissionKind = (typeof PERMISSION_KINDS)[number];
 
@@ -950,6 +952,19 @@ export interface PermissionRender {
 }
 
 /**
+ * The voiceover a `voice_generation` request is about (set by the runtime from the tool's estimate): the voice
+ * provider and model that will be paid, the number of lines to generate, their estimated length and cost.
+ * `usdCost` is null when the provider's rate is unknown.
+ */
+export interface PermissionVoice {
+  provider: string;
+  model: string;
+  lines: number;
+  seconds: number;
+  usdCost: number | null;
+}
+
+/**
  * Something an agent needs that is off or not yet approved: the tool call waits while the chat shows the request with
  * "Allow once", "Turn on" (or "Don't ask again") and "Don't allow"; the answer
  * (`POST …/turns/:turnId/permissions/:id`) resumes it.
@@ -969,6 +984,8 @@ export interface PermissionRequest {
   asset?: PermissionAsset;
   /** `long_render` only: the composition and its length in seconds. */
   render?: PermissionRender;
+  /** `voice_generation` only: what is about to be generated and what it costs. */
+  voice?: PermissionVoice;
 }
 
 /** Shown in the main conversation's message of the turn, whichever agent asked. */
@@ -1018,7 +1035,9 @@ export type AssistantPart =
   | DelegationPart
   | PermissionPart
   | QuestionPart
-  | StoryOfferPart;
+  | StoryOfferPart
+  | VoiceSetupPart
+  | VoicePilotPart;
 
 interface MessageBase {
   id: string;

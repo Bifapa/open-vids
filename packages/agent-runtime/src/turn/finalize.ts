@@ -50,6 +50,7 @@ export async function finalizeTurn(
   // expired (their parts update) and the turn's one-time grant is revoked.
   await run.permissions?.expireAll().catch(() => undefined);
   await run.questions?.expireAll().catch(() => undefined);
+  await run.voice?.broker.expireAll().catch(() => undefined);
   await run.permissions?.revokeGrant().catch(() => undefined);
   // Delegated work still open when a turn completes is stopped by the shutdown below: say so.
   const dropped =
@@ -80,6 +81,8 @@ export async function finalizeTurn(
   await run.story?.shutdown().catch(() => undefined);
   // A design save or attach already sent to the design service is atomic there and awaited too.
   await run.design?.shutdown().catch(() => undefined);
+  // A voice generation already sent to the voice service writes takes and audio files: it is cancelled and awaited.
+  await run.voice?.shutdown().catch(() => undefined);
   await run.analysis?.shutdown().catch(() => undefined);
   await run.frames?.shutdown().catch(() => undefined);
   await run.editing?.shutdown().catch(() => undefined);

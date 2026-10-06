@@ -728,6 +728,64 @@ never from model-supplied text.
 - `FakeResearchHost` (`src/testing`) is the in-memory host for tests (`importGate` holds an import in flight, recorded
   requests and signals); the runtime fixture wires it.
 
+## Voiceover
+
+Narration is spoken by a cloud text-to-speech provider the user connects with their own key (Gemini, OpenAI, OpenRouter,
+ElevenLabs or one custom OpenAI-compatible server). Studio's voice service (`/api/voice` for the user's providers, saved
+voices and dialects; `/api/projects/:id/voice` for the project's script, takes and synthesis; contract in
+`packages/agent-protocol/src/voice.ts` and `voiceDialects.ts`) holds the keys and does every call — a key never reaches the
+runtime or a model, and the agents name a saved voice (a preset) and send lines, never an address.
+
+- **Beta flag.** Voiceover is on only when the process env has `OPENVIDS_BETA_FEATURES=1` (`voiceFeatureEnabled` in
+  `src/voice/feature.ts`, same gate as Design Systems). Off, `main.ts` wires no voice host: no agent gets a voice tool, and
+  neither the role prompts (`VOICE_DIRECTOR` / `VOICE_AUDIO`, `RoleOptions.voice`) nor the plan mention narration.
+  `ToolAvailability.voice` is that host's presence.
+- **Host** (`src/voice/host.http.ts`, bound to one project): `presets` / `getPreset` (`GET /voice/presets`), `providers`
+  (the user's "Rules for the agent" ride on each), `dialects`, `script` / `saveScript` / `setProjectVoice`
+  (`GET|PUT …/voice/script`, `PUT …/voice/voice`), `check` (`POST …/voice/check`: dialect check and estimate, nothing
+  paid) and `synthesize`. A synthesis is a **cancellable write** (`src/voice/transport.ts`, like an import): the request
+  carries a runtime-generated `requestId`; on Stop the host posts `…/voice/requests/:id/cancel` and keeps waiting for the
+  server's answer (a take may already be committing), failing `write_unsettled` only when the cancel was not acknowledged as
+  `cancelled` and no answer came within the settle bound. Its progress is read from `GET …/voice/requests/:id` while it
+  runs, and it has a 30-minute bound. Failures arrive as `VoiceToolError` with the service's code, `params`
+  (`retryAfterSeconds`, `daily`, `contentType`, `body`) and `issues`; the executor turns them into text with what to do
+  (`src/voice/format.ts`): `invalid_key` (tell the user, do not retry), `rate_limited` (with the retry time), `quota_exhausted`,
+  `not_audio` (the server's answer, excerpted), `dialect_violation` (the issues), `not_configured` (call
+  `request_voice_setup`).
+- **Tools** (`src/voice/tools.ts`, executor `src/voice/executor.ts`): `request_voice_setup {language, sampleText,
+  suggestion}` (Director and Audio; the Director always has it) and `generate_voiceover {lines, lineIds?}` (Audio; the
+  Director inherits it when Audio is off — `withInheritedTools`). Both change the project (and cost money): never in an Ask
+  turn, refused after a plan proposal, in the Render QA review and in the final report, and in a design turn
+  (`PROJECT_CHANGING_TOOLS`, `CHANGES_PROJECT`). They write takes and audio through the voice service, never a
+  composition, so they take no write lease; a running generation is cancelled and awaited in `finalizeTurn` before the
+  checkpoint closes (the service's takes file is history-tracked, so Revert undoes the turn's voiceover).
+- **`request_voice_setup`.** The call publishes a `voice-setup` part (a `VoiceBroker`, cloned from the question broker with
+  a structured answer, `src/voice/broker.ts`) and waits. The user answers `POST /v1/chats/:chatId/turns/:turnId/voice-setups/:id`
+  with `{presetId}` or `{decline: true}`; an unknown preset is `invalid_request` (the card stays pending, checked with
+  `host.getPreset`), an answered or expired card `turn_not_active`. On a preset the **runtime** sets the project's voice
+  (`PUT …/voice/voice`) and returns the voice with its script dialect (`renderVoiceDialect(dialect, provider.agentRules)`:
+  tags, pauses, style field, limits, vendor guidance and the user's own rules). A decline or an unanswered card (the turn
+  ended) returns a refusal that says there is no voiceover and not to make speech another way.
+- **`generate_voiceover`.** Saves the script (`PUT …/voice/script`, ids kept so takes survive), checks it
+  (`POST …/voice/check`; an error goes back to the agent verbatim with the dialect rules, nothing is paid and no card is
+  shown), asks `voice_generation` — a once-only permission card carrying `voice: {provider, model, lines, seconds,
+  usdCost}`, answered once per turn like `long_render`, skipped when every line is already cached —, generates the **first
+  line needing generation** as the pilot and publishes a `voice-pilot` part (`POST …/voice-pilots/:id` with `{decision:
+  "approve"}` or `{decision: "change", feedback}`). Approved: the rest is generated in the same call and the result lists
+  every line's id, file, range in the file and length, how to place them (`edit_timeline add_clip {voiceLine, start,
+  track}` — the clip takes the file, range and length from the line's selected take) and to duck the music
+  (`duck_audio`); changes: the user's note is returned, nothing else was generated; a failure after the pilot keeps the
+  pilot and says so. Server problems return as text (above); the call never retries by itself.
+- **Prompts.** `VOICE_DIRECTOR`: call `request_voice_setup` first, write the script in the returned dialect, optionally show
+  it with `propose_plan` (one step per line, the step title is the speaker text — Studio draws its tags as chips), then
+  delegate to Audio with the script and the dialect rules in the task. `VOICE_AUDIO` (also in the Director's inherited
+  work when Audio is off): voice → script → `generate_voiceover` → placement with `voiceLine` → `duck_audio` → verify.
+- Events and parts: `voiceSetup.updated` / `voicePilot.updated` (`messageId`, the request) fold into `voice-setup` /
+  `voice-pilot` parts in the main message; a pending card is expired when the turn ends (`settleOpenPart`), like questions.
+- Chat rows: `requesting_voice_setup`, `generating_voiceover {count}`.
+- `FakeVoiceHost` (`src/testing/voice.ts`) is the in-memory host for tests; unlike the other fakes the runtime fixture does
+  not wire it by default — pass `{ voice: () => host }` to `createRuntimeFixture`.
+
 ## Other projects (`#` attachments)
 
 The user can attach **other OpenVids projects** to a chat with `#` in the composer (a `ProjectReference` part of a user

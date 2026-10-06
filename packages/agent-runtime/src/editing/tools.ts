@@ -92,8 +92,13 @@ export function editingToolsFor(
 
 const CONVENTIONS = `Conventions: all times are seconds on the composition timeline (0 = start). Clip ids come from inspect_timeline and from the results of your own edits; assets are project-relative paths from inspect_project. Track 0 is the A-roll: the main story, audible. Higher tracks are B-roll and overlays (their video is muted; they are drawn on top of lower tracks because newer clips get a higher z-index) and titles. Music and sound effects are audio clips on tracks of their own: music at volume about 0.2–0.4 under speech with a 1–2 s fadeIn/fadeOut, sound effects as loud as they need to be.`;
 
+const ADD_CLIP_GUIDE = `- add_clip: asset, start, track; optional duration (default: rest of the media — of the user-picked fragment, when there is one —; 3 s for images), mediaStart (in-point in the source; defaults to the user-picked fragment's start), volume (0–${EDIT_LIMITS.maxVolume}), muted, fit ("contain"|"cover"), frame ({x, y, width, height} in composition pixels, e.g. a logo in a corner; default: a video fills the frame, an image keeps its size, centred), fadeIn/fadeOut (seconds of linear audio/video gain ramp at the clip start/end; use 1–2 s on music beds).`;
+
+/** The same line when the runtime has a voice host. */
+const VOICE_ADD_CLIP_GUIDE = `- add_clip: asset (omit it only with voiceLine), start, track; optional voiceLine (the id of a generated voiceover line — the clip takes that line's file, range and length), duration (default: rest of the media — of the user-picked fragment, when there is one —; 3 s for images), mediaStart (in-point in the source; defaults to the user-picked fragment's start), volume (0–${EDIT_LIMITS.maxVolume}), muted, fit ("contain"|"cover"), frame ({x, y, width, height} in composition pixels, e.g. a logo in a corner; default: a video fills the frame, an image keeps its size, centred), fadeIn/fadeOut (seconds of linear audio/video gain ramp at the clip start/end; use 1–2 s on music beds).`;
+
 const EDIT_OPERATIONS_GUIDE = `Operations (each has "op" plus):
-- add_clip: asset, start, track; optional duration (default: rest of the media — of the user-picked fragment, when there is one —; 3 s for images), mediaStart (in-point in the source; defaults to the user-picked fragment's start), volume (0–${EDIT_LIMITS.maxVolume}), muted, fit ("contain"|"cover"), frame ({x, y, width, height} in composition pixels, e.g. a logo in a corner; default: a video fills the frame, an image keeps its size, centred), fadeIn/fadeOut (seconds of linear audio/video gain ramp at the clip start/end; use 1–2 s on music beds).
+${ADD_CLIP_GUIDE}
 - add_sequence: asset (video/audio), track, ranges [{from, to}] (source in/out points, up to ${EDIT_LIMITS.sequenceRanges}); optional start (default 0), volume, muted, fit, frame, edgeFade (0–${EDIT_LIMITS.maxEdgeFade} s audio ramp at both edges of every clip, e.g. 0.02 against clicks). Places one clip per range back to back with no gaps and returns all their ids; use it for cutting one long recording, not for placing single clips. Refused if a range runs past the end of the source or outside the fragment the user picked.
 - add_text: text, start, duration, track; optional placement ("top"|"center"|"bottom"), size ("small"|"medium"|"large"), color.
 - add_component: name (a block/component from browse_presets), start, track; optional duration.
@@ -128,13 +133,21 @@ const DESCRIPTIONS: Record<EditingToolName, string> = {
 
 // ── Schemas ──────────────────────────────────────────────────────────────────
 
-const OPERATION_SCHEMAS: Record<EditOperationName, OperationSchema> = {
-  ...MORE_OPERATION_SCHEMAS,
-  add_clip: operationSchema(
+/**
+ * `add_clip`. With a voice host (`voice`) it also takes `voiceLine` and `asset` may then be omitted; without one the
+ * schema is exactly the plain one, so agents never hear of voiceover.
+ */
+function addClipSchema(voice: boolean): OperationSchema {
+  return operationSchema(
     "add_clip",
     "Place a project asset (video, image or audio) on the timeline.",
     {
-      asset: str("Project-relative asset path from inspect_project.", EDIT_LIMITS.pathChars),
+      asset: str(
+        voice
+          ? "Project-relative asset path from inspect_project. Required unless voiceLine is given."
+          : "Project-relative asset path from inspect_project.",
+        EDIT_LIMITS.pathChars,
+      ),
       start: time("Timeline start in seconds."),
       track: track("Track: 0 = A-roll, higher = B-roll/overlay; audio on its own track."),
       duration: {
@@ -152,9 +165,20 @@ const OPERATION_SCHEMAS: Record<EditOperationName, OperationSchema> = {
       frame,
       fadeIn: fade("start"),
       fadeOut: fade("end"),
+      ...(voice && {
+        voiceLine: str(
+          "The id of a voiceover line made by generate_voiceover: the clip takes the line's file, in-point and length from its selected take (asset may then be omitted), is marked as that line and joins the voiceover audio group.",
+          64,
+        ),
+      }),
     },
-    ["asset", "start", "track"],
-  ),
+    voice ? ["start", "track"] : ["asset", "start", "track"],
+  );
+}
+
+const OPERATION_SCHEMAS: Record<EditOperationName, OperationSchema> = {
+  ...MORE_OPERATION_SCHEMAS,
+  add_clip: addClipSchema(false),
   add_sequence: operationSchema(
     "add_sequence",
     "Place many ranges of ONE video/audio source back to back on a track (a rough cut): one clip per range, no gaps.",
@@ -363,6 +387,41 @@ const compositionProperty = str(
   EDIT_LIMITS.pathChars,
 );
 
+/** The `edit_timeline` arguments, built from the operation schemas it offers. */
+function editTimelineParameters(
+  schemas: Record<EditOperationName, OperationSchema>,
+): Record<string, unknown> {
+  return {
+    type: "object",
+    properties: {
+      composition: compositionProperty,
+      baseVersion: str(
+        "Optional: a `version` from inspect_timeline to check against. By default the version you last read this turn is used; the batch is refused with a conflict if the composition changed since.",
+        200,
+      ),
+      dryRun: {
+        type: "boolean",
+        description: "Validate the batch and report what it would change; nothing is written.",
+      },
+      operations: {
+        type: "array",
+        minItems: 1,
+        maxItems: EDIT_LIMITS.operations,
+        description: "Operations applied in order, atomically.",
+        items: { anyOf: EDIT_OPERATION_NAMES.map((name) => schemas[name]) },
+      },
+    },
+    required: ["operations"],
+    additionalProperties: false,
+  };
+}
+
+/** `edit_timeline` when the runtime has a voice host: `add_clip` also takes `voiceLine`. */
+const VOICE_EDIT_TIMELINE_PARAMETERS = editTimelineParameters({
+  ...OPERATION_SCHEMAS,
+  add_clip: addClipSchema(true),
+});
+
 const PARAMETERS: Record<EditingToolName, Record<string, unknown>> = {
   inspect_project: {
     type: "object",
@@ -394,29 +453,7 @@ const PARAMETERS: Record<EditingToolName, Record<string, unknown>> = {
     },
     additionalProperties: false,
   },
-  edit_timeline: {
-    type: "object",
-    properties: {
-      composition: compositionProperty,
-      baseVersion: str(
-        "Optional: a `version` from inspect_timeline to check against. By default the version you last read this turn is used; the batch is refused with a conflict if the composition changed since.",
-        200,
-      ),
-      dryRun: {
-        type: "boolean",
-        description: "Validate the batch and report what it would change; nothing is written.",
-      },
-      operations: {
-        type: "array",
-        minItems: 1,
-        maxItems: EDIT_LIMITS.operations,
-        description: "Operations applied in order, atomically.",
-        items: { anyOf: EDIT_OPERATION_NAMES.map((name) => OPERATION_SCHEMAS[name]) },
-      },
-    },
-    required: ["operations"],
-    additionalProperties: false,
-  },
+  edit_timeline: editTimelineParameters(OPERATION_SCHEMAS),
   browse_presets: {
     type: "object",
     properties: {
@@ -568,12 +605,17 @@ export function buildEditingTools(
   agent: AgentId,
   enabled: readonly SpecialistId[],
   execute: Executor,
-  options: { timelineWrites?: boolean } = {},
+  options: { timelineWrites?: boolean; voice?: boolean } = {},
 ): HostTool[] {
+  const voice = options.voice === true;
   return editingToolsFor(agent, enabled, options).map((name) => ({
     name,
-    description: DESCRIPTIONS[name],
-    parameters: PARAMETERS[name],
+    description:
+      voice && name === EDITING_TOOL_NAMES.edit
+        ? DESCRIPTIONS[name].replace(ADD_CLIP_GUIDE, VOICE_ADD_CLIP_GUIDE)
+        : DESCRIPTIONS[name],
+    parameters:
+      voice && name === EDITING_TOOL_NAMES.edit ? VOICE_EDIT_TIMELINE_PARAMETERS : PARAMETERS[name],
     execute: (args, signal, progress) => execute(name, args, signal, progress),
     activity: (args) => ACTIVITIES[name](args),
   }));

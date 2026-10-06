@@ -19,6 +19,7 @@ export const PERMISSION_WHAT: Record<PermissionKind, string> = {
   asset_download: "downloading outside material",
   restricted_asset: "importing a restricted-license asset",
   long_render: "a long render",
+  voice_generation: "generating the voiceover",
 };
 
 /** What the model reads when the user refused, or the turn ended before they answered. */

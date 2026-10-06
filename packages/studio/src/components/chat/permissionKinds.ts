@@ -4,6 +4,7 @@ import {
   DownloadSimple,
   FilmSlate,
   Globe,
+  Microphone,
   Scales,
   ShieldWarning,
   XCircle,
@@ -197,6 +198,27 @@ export const KIND_VIEWS: Record<PermissionKind, KindView> = {
       denied: "chat.permission.state.denied.restricted_asset",
     },
     showsAsset: true,
+  },
+  // Paid speech: each generation is billed to the user's own key, so it is asked every time, with the estimate.
+  voice_generation: {
+    icon: Microphone,
+    title: "chat.permission.title.voice_generation",
+    settledTitle: "chat.permission.title.voice_generation.settled",
+    detail: { type: "note", text: "chat.permission.voiceGeneration.note" },
+    once: {
+      label: "chat.permission.voiceOnce",
+      hint: "chat.permission.voiceOnceHint",
+      variant: "primary",
+    },
+    always: null,
+    deny: "chat.permission.voiceDeny",
+    states: {
+      ...WEBSITE_STATES,
+      allowed_once: "chat.permission.state.allowed_once.voice_generation",
+      enabled: "chat.permission.state.allowed_once.voice_generation",
+      denied: "chat.permission.state.denied.voice_generation",
+    },
+    showsAsset: false,
   },
 };
 

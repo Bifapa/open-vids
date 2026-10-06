@@ -21,6 +21,7 @@ import { changesProject } from "../intent.js";
 import { buildFrameTools } from "../editing/frames.tools.js";
 import { buildCrossProjectTools } from "../crossProject/tools.js";
 import { buildQaTools } from "../qa/tools.js";
+import { buildVoiceTools } from "../voice/tools.js";
 
 export const TOOL_NAMES = {
   propose: "propose_plan",
@@ -84,6 +85,11 @@ export interface ToolAvailability {
    * turn, the typed-request subset (list, read, extract, save, attach) in an ordinary one.
    */
   design?: boolean;
+  /**
+   * The runtime has a voice host (Voiceover is on): Audio gets `request_voice_setup` and `generate_voiceover`, the
+   * Director `request_voice_setup` and, while Audio is off in the chat, `generate_voiceover` too.
+   */
+  voice?: boolean;
   /** What the user wants from the turn (default `edit`). An Ask turn gets no project-changing tools. */
   intent?: ChatIntent;
   /**
@@ -206,7 +212,10 @@ export function buildHostTools(
   const designAction = availability.designAction ?? null;
   const timelineWrites = timelineWritesAllowed(turn) && designAction === null;
   const editing = availability.editing
-    ? buildEditingTools(agent, availability.enabled, execute, { timelineWrites })
+    ? buildEditingTools(agent, availability.enabled, execute, {
+        timelineWrites,
+        voice: availability.voice === true,
+      })
     : [];
   const analysis = availability.analysis
     ? buildAnalysisTools(
@@ -252,11 +261,16 @@ export function buildHostTools(
     { available: availability.design === true, action: designAction },
     execute,
   );
+  const voice =
+    availability.voice && agent !== "jev"
+      ? buildVoiceTools(agent, availability.enabled, execute)
+      : [];
   const projectTools = [
     ...editing,
     ...analysis,
     ...story,
     ...design,
+    ...voice,
     ...research,
     ...frames,
     ...crossProject,

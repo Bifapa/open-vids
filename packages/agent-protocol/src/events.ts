@@ -18,6 +18,7 @@ import type {
   UsageTotals,
 } from "./types.js";
 import type { TurnQaState } from "./qa.js";
+import type { VoicePilotRequest, VoiceSetupRequest } from "./voice.js";
 
 /**
  * Product-level chat events. They describe what happened in the conversation,
@@ -68,6 +69,13 @@ export type ChatEventPayload =
    * main conversation's assistant message and is updated in place, wherever the answer came from.
    */
   | { type: "storyOffer.updated"; messageId: string; offer: StoryOffer }
+  /**
+   * A voice-setup card of this turn (`request_voice_setup`) appeared or changed state (answered, declined, expired):
+   * its part lives in the main conversation's assistant message and is updated in place.
+   */
+  | { type: "voiceSetup.updated"; messageId: string; setup: VoiceSetupRequest }
+  /** The pilot line of a voiceover generation appeared or was answered (approved, changes asked, expired). */
+  | { type: "voicePilot.updated"; messageId: string; pilot: VoicePilotRequest }
   | { type: "message.completed"; messageId: string; status: AssistantMessageStatus }
   | { type: "checkpoint.updated"; turnId: string; checkpoint: TurnCheckpoint }
   /** The Director published or revised the turn's compact plan. */

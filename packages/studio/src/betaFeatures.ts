@@ -8,7 +8,12 @@
 export const OPENVIDS_CHANNEL_PARAM = "openvidsChannel";
 
 /** Every beta feature, by id. A feature leaves this list when it ships on the stable channel. */
-export const BETA_FEATURES = ["projectTabs", "projectMentions", "designSystems"] as const;
+export const BETA_FEATURES = [
+  "projectTabs",
+  "projectMentions",
+  "designSystems",
+  "voiceover",
+] as const;
 
 export type BetaFeatureId = (typeof BETA_FEATURES)[number];
 

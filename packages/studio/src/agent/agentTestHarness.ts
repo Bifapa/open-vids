@@ -37,6 +37,10 @@ import type {
   PermissionState,
   StoryOffer,
   StoryOfferPart,
+  VoicePilotPart,
+  VoicePilotRequest,
+  VoiceSetupPart,
+  VoiceSetupRequest,
 } from "@hyperframes/agent-protocol";
 import { AgentApiError, type AgentClient } from "./agentClient";
 import type { EventSourceLike } from "./agentStream";
@@ -226,6 +230,46 @@ export function storyOffer(overrides: Partial<StoryOffer> = {}): StoryOffer {
 export function storyOfferPart(overrides: Partial<StoryOffer> = {}): StoryOfferPart {
   const offer = storyOffer(overrides);
   return { type: "story-offer", id: offer.id, offer };
+}
+
+export function voiceSetupRequest(overrides: Partial<VoiceSetupRequest> = {}): VoiceSetupRequest {
+  return {
+    id: "setup1",
+    agent: "director",
+    language: "ru",
+    sampleText: "Привет! Это пример голоса.",
+    suggestion: "warm, mid-30s, calm",
+    state: "pending",
+    requestedAt: 4000,
+    ...overrides,
+  };
+}
+
+export function voiceSetupPart(overrides: Partial<VoiceSetupRequest> = {}): VoiceSetupPart {
+  const setup = voiceSetupRequest(overrides);
+  return { type: "voice-setup", id: setup.id, setup };
+}
+
+export function voicePilotRequest(overrides: Partial<VoicePilotRequest> = {}): VoicePilotRequest {
+  return {
+    id: "pilot1",
+    agent: "audio",
+    lineId: "l1",
+    text: "Welcome to the channel.",
+    file: "assets/voice/welcome-1a2b3c4d.wav",
+    start: 1.5,
+    end: 4,
+    remainingLines: 5,
+    remainingUsdCost: 0.02,
+    state: "pending",
+    requestedAt: 4000,
+    ...overrides,
+  };
+}
+
+export function voicePilotPart(overrides: Partial<VoicePilotRequest> = {}): VoicePilotPart {
+  const pilot = voicePilotRequest(overrides);
+  return { type: "voice-pilot", id: pilot.id, pilot };
 }
 
 export function chatState(overrides: Partial<ChatState> = {}): ChatState {
@@ -514,6 +558,26 @@ export function createFakeClient(data: FakeClientData = {}): FakeClient {
         state: decision === "accept" ? "accepted" : "declined",
         answeredAt: 7000,
       }),
+    })),
+    answerVoiceSetup: vi.fn(async (_chatId, _turnId, setupId, answer) => ({
+      setup: voiceSetupRequest(
+        "decline" in answer
+          ? { id: setupId, state: "declined", answeredAt: 7000 }
+          : {
+              id: setupId,
+              state: "answered",
+              presetId: answer.presetId,
+              presetName: "Warm narrator",
+              answeredAt: 7000,
+            },
+      ),
+    })),
+    answerVoicePilot: vi.fn(async (_chatId, _turnId, pilotId, answer) => ({
+      pilot: voicePilotRequest(
+        answer.decision === "approve"
+          ? { id: pilotId, state: "approved", answeredAt: 7000 }
+          : { id: pilotId, state: "changes", feedback: answer.feedback, answeredAt: 7000 },
+      ),
     })),
     answerQuestion: vi.fn(async (_chatId, _turnId, questionId, answer) => ({
       question: questionRequest({ id: questionId, state: "answered", answer, answeredAt: 7000 }),

@@ -26,6 +26,8 @@ import { projectChipLabel } from "../../agent/projectMentionLabels";
 import { isPermissionPart } from "../../agent/permissionGuards";
 import { isQuestionPart } from "../../agent/questionGuards";
 import { isStoryOfferPart } from "../../agent/storyOfferGuards";
+import { isVoicePilotPart, isVoiceSetupPart } from "../../agent/voiceChatGuards";
+import { isBetaFeatureEnabled } from "../../betaFeatures";
 import { cn } from "../ui/cn";
 import { Badge } from "../ui/Status";
 import { ActivityRow } from "./ActivityRow";
@@ -37,6 +39,8 @@ import { DesignTurnTag } from "./DesignTurnParts";
 import { PermissionCard } from "./PermissionCard";
 import { QuestionCard } from "./QuestionCard";
 import { StoryOfferCard } from "./StoryOfferCard";
+import { VoicePilotCard } from "./VoicePilotCard";
+import { VoiceSetupCard } from "./VoiceSetupCard";
 import { formatClockTime } from "./relativeTime";
 import { ThinkingBlock } from "./ThinkingBlock";
 
@@ -370,6 +374,15 @@ export function AssistantBlock({
             <QuestionCard turnId={message.turnId} question={group.part.question} />
           ) : isStoryOfferPart(group.part) ? (
             <StoryOfferCard turnId={message.turnId} offer={group.part.offer} />
+          ) : isVoiceSetupPart(group.part) ? (
+            // Beta: with the flag off there is no voice window to open, so the card is not drawn.
+            isBetaFeatureEnabled("voiceover") ? (
+              <VoiceSetupCard turnId={message.turnId} setup={group.part.setup} />
+            ) : null
+          ) : isVoicePilotPart(group.part) ? (
+            isBetaFeatureEnabled("voiceover") ? (
+              <VoicePilotCard turnId={message.turnId} pilot={group.part.pilot} />
+            ) : null
           ) : null}
         </Fragment>
       ))}
