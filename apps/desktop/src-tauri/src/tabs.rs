@@ -125,6 +125,16 @@ pub trait TabActions: Send + Sync {
     fn close(&self, key: &str) -> CloseOutcome;
 }
 
+/// Whose a failed open's failure is (`Tabs::fail`).
+#[derive(Debug, PartialEq, Eq)]
+pub enum FailedOpen {
+    /// The open was still the project's newest: it reports the failure.
+    Owned,
+    /// Something newer took over. `slot_gone`: the project has no slot at all
+    /// any more, so nothing else will end its "opening" phase.
+    Superseded { slot_gone: bool },
+}
+
 /// What closing a tab left behind.
 pub struct Closed<S> {
     /// The project's server and page, to tear down without the lock.
@@ -228,6 +238,24 @@ impl<S> Tabs<S> {
         if abandoned {
             self.forget(key);
         }
+    }
+
+    /// An open of `key` ended in failure: whether that failure is this open's
+    /// to report (its tab goes), or the open was superseded meanwhile. A
+    /// superseded open owns nothing, but when its slot is gone with no newer
+    /// open of the project (a single-project open took every slot, the tab was
+    /// closed while it started) its "opening" phase has no owner either and
+    /// the caller must clear it.
+    pub fn fail(&mut self, key: &str, began: Option<u64>) -> FailedOpen {
+        if let Some(generation) = began {
+            if !self.is_current(key, generation) {
+                return FailedOpen::Superseded {
+                    slot_gone: !self.has(key),
+                };
+            }
+            self.abandon(key, generation);
+        }
+        FailedOpen::Owned
     }
 
     /// Commit a started project. `Ok` hands back what it replaced (a restarted
@@ -628,6 +656,40 @@ mod tests {
         tabs.activate(HOME).unwrap();
         assert_eq!(tabs.cycle(true), "a");
         assert_eq!(tabs.cycle(false), "b");
+    }
+
+    #[test]
+    fn a_superseded_open_whose_slot_is_gone_must_clear_its_phase_but_one_with_a_newer_open_must_not() {
+        let torn = Arc::new(AtomicUsize::new(0));
+        // Single-project mode: B's open took every slot (A's included) while A's sidecar started.
+        let mut tabs: Tabs<Server> = Tabs::default();
+        let a = tabs.begin("a", "a");
+        drop(tabs.take_all());
+        tabs.begin("b", "b");
+        assert_eq!(tabs.fail("a", Some(a)), FailedOpen::Superseded { slot_gone: true });
+        assert!(tabs.has("b"), "the failure of A touches nothing of B");
+
+        // A tab closed while it started: no slot, no newer open.
+        let mut tabs: Tabs<Server> = Tabs::default();
+        let c = tabs.begin("c", "c");
+        let closed = tabs.close("c").expect("c has a tab");
+        assert!(closed.open.is_none(), "an opening tab has no server to tear down");
+        assert_eq!(tabs.fail("c", Some(c)), FailedOpen::Superseded { slot_gone: true });
+
+        // A newer open of the same project owns the phase: the slot stays, so nothing is cleared.
+        let mut tabs: Tabs<Server> = Tabs::default();
+        let first = tabs.begin("d", "d");
+        let second = tabs.begin("d", "d");
+        assert_eq!(tabs.fail("d", Some(first)), FailedOpen::Superseded { slot_gone: false });
+        assert!(tabs.is_current("d", second));
+
+        // The newest open owns its failure: its tab goes; a project that was open keeps its own.
+        assert_eq!(tabs.fail("d", Some(second)), FailedOpen::Owned);
+        assert!(!tabs.has("d"));
+        opened(&mut tabs, "e", &torn);
+        let restart = tabs.begin("e", "e");
+        assert_eq!(tabs.fail("e", Some(restart)), FailedOpen::Owned);
+        assert!(tabs.open_project("e").is_some());
     }
 
     #[test]

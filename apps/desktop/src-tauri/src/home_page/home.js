@@ -1429,11 +1429,34 @@
       })
       .catch(() => {});
   }
+  /* Opens this page did not start (Studio's ⌘O / Open Project menu, a launch reopen): the shell changes the tab
+     list when one begins and when it fails, so ask what happened then. A failure is delivered once, to whoever
+     reads it first, so every read goes through openFailed / trackOpen. Skipped while pollOpens is mid-read. */
+  function adoptForeignOpens() {
+    if (!perProject() || opensBusy) return;
+    opensBusy = true;
+    api("/api/open-state")
+      .then((st) => {
+        for (const o of opensOf(st)) {
+          if (o.phase === "failed") openFailed(o);
+          else if (o.phase === "opening" && !opens.has(o.key))
+            trackOpen(o.key, { label: o.label || "", posted: true });
+        }
+      })
+      .catch(() => {
+        /* The next change asks again. */
+      })
+      .finally(() => {
+        opensBusy = false;
+      });
+  }
   if (window.OVTabs) window.OVTabs.subscribe(syncMarks);
   if (OV.betaFeatures()) {
     document.addEventListener("visibilitychange", refreshRecents);
     window.addEventListener("focus", refreshRecents);
     window.addEventListener("openvids-tabs-changed", refreshRecents);
+    for (const type of ["visibilitychange", "focus", "openvids-tabs-changed"])
+      (type === "visibilitychange" ? document : window).addEventListener(type, adoptForeignOpens);
   }
   /* A project with no clips yet (new, or an empty folder) opens in Media: importing is the first step. */
   function openProject(p, at) {

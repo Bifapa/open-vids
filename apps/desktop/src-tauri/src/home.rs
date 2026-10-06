@@ -20,10 +20,11 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
+use super::coded_error::CodedError;
 use super::home_auth::HomeToken;
 use super::home_internal::{HomeLink, InternalSecret};
 use super::home_routes::{serve_one, thumb_name_for, HomeInner, OpenPhase, Opener, PrefsListener};
-use super::tabs::{TabActions, TabsView};
+use super::tabs::{FailedOpen, TabActions, TabsView};
 
 /// A loopback listener that serves the home page for the app's lifetime.
 pub struct HomeServer {
@@ -140,6 +141,14 @@ impl HomeServer {
         if let Ok(mut inner) = self.inner.lock() {
             inner.set_open_phase(key, phase);
         }
+    }
+
+    /// An open of `key` failed (see `HomeInner::open_failed`).
+    pub fn open_failed(&self, key: &str, outcome: &FailedOpen, label: &str, error: &CodedError) -> bool {
+        self.inner
+            .lock()
+            .map(|mut inner| inner.open_failed(key, outcome, label, error))
+            .unwrap_or(true)
     }
 
     /// The open of `key` is over without a result to show (it was handed to an

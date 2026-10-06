@@ -35,14 +35,25 @@ pub fn main_webview(app: &AppHandle) -> Option<Webview> {
     app.get_webview(MAIN)
 }
 
-/// The webview label of the project `key`'s tab.
-pub fn child_label(key: &str) -> String {
-    format!("project-{key}")
+/// The webview label of one open of the project `key` (`generation` is that
+/// open's number): unique per open, so a superseded open's page, which may
+/// still be closing, can never keep the current open from creating its own.
+pub fn child_label(key: &str, generation: u64) -> String {
+    format!("project-{key}-{generation}")
+}
+
+/// Whether a window of this size can hold a page. A minimized window reports
+/// 0×0 on Windows; a page added then would get 0/0 = NaN auto-resize rates and
+/// never lay out again.
+pub fn has_area(size: tauri::PhysicalSize<u32>) -> bool {
+    size.width > 0 && size.height > 0
 }
 
 /// What a project webview needs to be wired into the shell.
 pub struct ChildSpec {
     pub key: String,
+    /// The webview's label, from [`child_label`].
+    pub label: String,
     pub url: tauri::Url,
     /// The Studio origin the page lives on (the only server its render links
     /// may ask to open a file).
@@ -63,8 +74,17 @@ pub fn create_child(app: &AppHandle, spec: ChildSpec) -> Result<Webview, CodedEr
         )
     };
     let window = main_window(app).ok_or_else(|| failed("the main window is gone".to_string()))?;
-    let size = window.inner_size().map_err(|e| failed(e.to_string()))?;
-    let label = child_label(&spec.key);
+    let mut size = window.inner_size().map_err(|e| failed(e.to_string()))?;
+    if !has_area(size) {
+        // Minimized (Windows reports 0×0): restore it, so the page is sized
+        // against the real window and its auto-resize rates are finite.
+        let _ = window.unminimize();
+        size = window.inner_size().map_err(|e| failed(e.to_string()))?;
+        if !has_area(size) {
+            return Err(failed("the window has no size yet".to_string()));
+        }
+    }
+    let label = spec.label.clone();
 
     let page_app = app.clone();
     let page_key = spec.key.clone();

@@ -20,7 +20,6 @@ use std::sync::Mutex;
 use tauri::Manager;
 
 use super::coded_error::CodedError;
-use super::home_routes::OpenPhase;
 use super::tab_webviews::{self, ChildSpec};
 use super::tabs::{OpenProject, Surface, SOFT_LIMIT};
 use super::{
@@ -140,15 +139,33 @@ fn open_inner(
         }
     };
 
-    let (generation, previous) = {
+    let begun = {
         let mut state = app_state.lock().map_err(|_| poisoned())?;
-        // Without tabs the window shows one project: the previous server goes
-        // first (the new one must be able to bind, and the old Chrome
-        // instances must go with it). The home server stays up.
-        let previous = if multi { Vec::new() } else { state.tabs.take_all() };
-        let generation = state.tabs.begin(key, &project.id);
-        tab_actions::publish_state(&state);
-        (generation, previous)
+        // The checks above ran under another lock, with a native dialog and a
+        // runtime lookup in between: another open of this project may have
+        // begun, or finished, meanwhile. It owns the tab; this one has nothing
+        // left to do (a finished one still wants focusing).
+        if multi && state.tabs.has(key) {
+            Err(state.tabs.open_project(key).is_some())
+        } else {
+            // Without tabs the window shows one project: the previous server
+            // goes first (the new one must be able to bind, and the old Chrome
+            // instances must go with it). The home server stays up.
+            let previous = if multi { Vec::new() } else { state.tabs.take_all() };
+            let generation = state.tabs.begin(key, &project.id);
+            tab_actions::publish_state(&state);
+            Ok((generation, previous))
+        }
+    };
+    let (generation, previous) = match begun {
+        Ok(begun) => begun,
+        Err(already_open) => {
+            if already_open {
+                let _ = tab_actions::activate(app, key);
+                clear_phase(app, key);
+            }
+            return Ok(None);
+        }
     };
     *began = Some(generation);
     // The opening tab shows in the strips.
@@ -212,17 +229,19 @@ fn open_inner(
                 serde_json::json!({ "url": target, "detail": e.to_string() }),
             )
         })?;
+        let label = tab_webviews::child_label(key, generation);
         tab_webviews::create_child(
             app,
             ChildSpec {
                 key: key.to_string(),
+                label: label.clone(),
                 url,
                 origin: studio_origin.clone(),
                 home_origin,
                 background: super::window_background(app),
             },
         )?;
-        Surface::Child(tab_webviews::child_label(key))
+        Surface::Child(label)
     } else {
         Surface::Main
     };
@@ -317,8 +336,9 @@ fn clear_phase(app: &tauri::AppHandle, key: &str) {
 /// own), and the failure is published for the Projects page, before it can load
 /// again. Without tabs the previous project is already gone, so the window
 /// would stay on a dead backend: it goes back to the Projects page, which shows
-/// the failure. `false` when a newer open of the project took over meanwhile and
-/// owns the phase.
+/// the failure; with tabs the Projects tab is shown for the same reason (an open
+/// started from a Studio menu would otherwise fail unseen). `false` when a newer
+/// open of the project took over meanwhile and owns the phase.
 fn fail_open(
     app: &tauri::AppHandle,
     key: &str,
@@ -329,28 +349,21 @@ fn fail_open(
     let Some(state) = app.try_state::<Mutex<AppState>>() else {
         return true;
     };
-    let multi = {
+    let (multi, owned) = {
         let Ok(mut state) = state.lock() else {
             return true;
         };
-        if let Some(generation) = began {
-            if !state.tabs.is_current(key, generation) {
-                return false;
-            }
-            state.tabs.abandon(key, generation);
-        }
-        state.home.set_open_phase(
-            key,
-            OpenPhase::Failed {
-                label: label.to_string(),
-                error: error.clone(),
-            },
-        );
+        let outcome = state.tabs.fail(key, began);
+        let owned = state.home.open_failed(key, &outcome, label, error);
         tab_actions::publish_state(&state);
-        state.multi
+        (state.multi, owned)
     };
+    if !owned {
+        return false;
+    }
     if multi {
         tab_webviews::notify_tabs_changed(app);
+        let _ = tab_actions::activate(app, super::tabs::HOME);
     } else if !super::window_is_on_home(app) {
         super::show_home(app);
     }

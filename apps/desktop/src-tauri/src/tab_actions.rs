@@ -100,6 +100,11 @@ pub fn close(app: &AppHandle, key: &str) -> CloseOutcome {
         let Some(closed) = state.tabs.close(key) else {
             return CloseOutcome::Unknown;
         };
+        if closed.open.is_none() {
+            // A tab closed while its sidecar still started: that open's
+            // "opening" phase has no owner left to end it.
+            state.home.clear_open(key);
+        }
         let label = state.tabs.child_label(&closed.active).map(str::to_string);
         publish_state(&state);
         (closed, label)

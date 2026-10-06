@@ -64,7 +64,7 @@ use super::home_auth::{self, Head, HomeToken, TOKEN_HEADER};
 use super::home_internal::InternalSecret;
 use super::recents::RecentsStore;
 use super::structure::validate_structure;
-use super::tabs::{TabActions, TabsView};
+use super::tabs::{FailedOpen, TabActions, TabsView};
 const PAGE: &str = include_str!("home_page/index.html");
 const SETTINGS_PAGE: &str = include_str!("home_page/settings.html");
 const REPORT_PAGE: &str = include_str!("home_page/report.html");
@@ -151,6 +151,30 @@ impl HomeInner {
     /// The open of `key` is over (it succeeded, or its failure was read).
     pub fn clear_open(&mut self, key: &str) {
         self.opens.retain(|(k, _)| k != key);
+    }
+
+    /// An open of `key` failed. The failure is published for the Projects page
+    /// when the open still owned the project; an open that something newer
+    /// superseded publishes nothing, but clears the "opening" phase when no
+    /// slot is left that could (single-project mode took every slot, or the
+    /// tab was closed while it started). Returns whether the failure was published.
+    pub fn open_failed(&mut self, key: &str, outcome: &FailedOpen, label: &str, error: &CodedError) -> bool {
+        match outcome {
+            FailedOpen::Owned => {
+                let phase = OpenPhase::Failed {
+                    label: label.to_string(),
+                    error: error.clone(),
+                };
+                self.set_open_phase(key, phase);
+                true
+            }
+            FailedOpen::Superseded { slot_gone } => {
+                if *slot_gone {
+                    self.clear_open(key);
+                }
+                false
+            }
+        }
     }
 
     /// Whether a sidecar start for `key` is under way.
@@ -1026,6 +1050,33 @@ mod tests {
         assert!(html.contains("X-Frame-Options: SAMEORIGIN\r\n"), "{html}");
         let json = response_head(200, "application/json", 5, "");
         assert!(!json.contains("frame-ancestors") && !json.contains("X-Frame-Options"), "{json}");
+    }
+
+    #[test]
+    fn a_failed_open_shows_only_when_it_owns_the_project_and_a_slotless_one_leaves_no_opening_phase() {
+        let base = std::env::temp_dir().join(format!("openvids-open-failed-{}", std::process::id()));
+        let mut inner = HomeInner::load(base.join("recents.json"), base.join("thumbs")).expect("home state");
+        let error = CodedError::plain("sidecar_failed", "boom");
+        let phase_of = |inner: &HomeInner, key: &str| {
+            inner.opens.iter().find(|(k, _)| k == key).map(|(_, phase)| matches!(phase, OpenPhase::Failed { .. }))
+        };
+
+        // Two opens under way; A's slot is then taken (single mode) and A's start fails.
+        inner.set_open_phase("a", OpenPhase::Opening { label: "A".into() });
+        inner.set_open_phase("b", OpenPhase::Opening { label: "B".into() });
+        assert!(!inner.open_failed("a", &FailedOpen::Superseded { slot_gone: true }, "A", &error));
+        assert!(!inner.is_opening("a"), "A's opening phase must not stay for good");
+        assert!(inner.is_opening("b"), "B's open is untouched");
+
+        // A newer open of the same project owns the phase: it stays "opening".
+        inner.set_open_phase("c", OpenPhase::Opening { label: "C".into() });
+        assert!(!inner.open_failed("c", &FailedOpen::Superseded { slot_gone: false }, "C", &error));
+        assert!(inner.is_opening("c"));
+
+        // The owner's failure is published, once.
+        assert!(inner.open_failed("c", &FailedOpen::Owned, "C", &error));
+        assert_eq!(phase_of(&inner, "c"), Some(true));
+        assert!(!inner.any_opening() || inner.is_opening("b"));
     }
 
     #[test]

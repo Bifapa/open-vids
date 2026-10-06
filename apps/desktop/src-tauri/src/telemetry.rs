@@ -42,7 +42,6 @@ use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
-use tauri::Manager;
 
 use crate::{i18n, prefs};
 
@@ -298,7 +297,7 @@ static TELEMETRY: OnceLock<Telemetry> = OnceLock::new();
 /// Whether the main window has focus. Off the main thread this waits for the
 /// event loop; on it, Tauri answers inline.
 fn main_window_active(app: &tauri::AppHandle) -> bool {
-    app.get_webview_window("main")
+    crate::tab_webviews::main_window(app)
         .and_then(|window| window.is_focused().ok())
         .unwrap_or(false)
 }
