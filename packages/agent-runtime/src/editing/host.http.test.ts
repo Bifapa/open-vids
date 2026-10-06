@@ -221,7 +221,7 @@ describe("HttpEditingHost", () => {
   });
 
   it("waits through a queued render and reports where it stands, then follows it to the end", async () => {
-    const stages: Array<string | null> = [];
+    const updates: unknown[] = [];
     const { host } = await studio({
       "POST /api/projects/p%201/render": (_request, response) =>
         json(response, 200, { jobId: "job1", status: "queued", queuePosition: 2 }),
@@ -250,14 +250,15 @@ describe("HttpEditingHost", () => {
         json(response, 200, { path: "renders/job1.mp4", metadata: {} }),
     });
     const output = await host.render({ quality: "draft" }, abortSignal(), (event) =>
-      stages.push(event.stage),
+      updates.push(event),
     );
     expect(output.path).toBe("renders/job1.mp4");
-    expect(stages).toEqual([
-      "Waiting in the render queue (position 2), behind Promo",
-      "Waiting in the render queue (position 1), behind Promo",
-      "capture",
-      "done",
+    // The queue's place is data (the UI words it in the user's language); a running render carries none.
+    expect(updates).toEqual([
+      { progress: 0, stage: null, queue: { position: 2, holder: "Promo" } },
+      { progress: 0, stage: null, queue: { position: 1, holder: "Promo" } },
+      { progress: 40, stage: "capture" },
+      { progress: 100, stage: "done" },
     ]);
   });
 

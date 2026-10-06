@@ -92,6 +92,8 @@ function PassRow({ pass, passes, sessionRunning, refreshKey }: PassRowProps) {
     pass.phase === "rendering" && pass.progress
       ? Math.round(Math.min(100, Math.max(0, pass.progress.percent)))
       : null;
+  // The render waits for the machine's render slot (another render runs): not rendering, and no percent to show.
+  const queue = pass.phase === "rendering" ? pass.progress?.queue : undefined;
   const scopeText = qaScopeText(pass.scope, pass.scopeNote);
   const renderLinked = isPassRenderLinked(pass, passes, sessionRunning);
   return (
@@ -126,7 +128,9 @@ function PassRow({ pass, passes, sessionRunning, refreshKey }: PassRowProps) {
           className={cn("inline-flex items-center gap-1", live ? "text-fg-2" : "text-fg-3")}
         >
           <PhaseGlyph phase={pass.phase} />
-          {t(QA_PASS_PHASE_LABELS[pass.phase])}
+          {queue && pass.phase === "rendering"
+            ? t("chat.qa.phase.queued")
+            : t(QA_PASS_PHASE_LABELS[pass.phase])}
           {live ? "…" : ""}
         </span>
         {counts.map(({ key, text }) => {
@@ -156,7 +160,19 @@ function PassRow({ pass, passes, sessionRunning, refreshKey }: PassRowProps) {
           {formatElapsed((pass.endedAt ?? now) - pass.startedAt)}
         </span>
       </button>
-      {percent !== null && (
+      {queue && (
+        <p
+          data-testid="qa-pass-queue"
+          role="status"
+          className="m-0 flex flex-wrap gap-x-1.5 pl-[22px] text-xs leading-[15px] text-fg-3"
+        >
+          <span>{t("renders.job.queued", { position: queue.position ?? 1 })}</span>
+          {queue.holder !== null && (
+            <span>{t("renders.job.queueHolder", { project: queue.holder })}</span>
+          )}
+        </p>
+      )}
+      {percent !== null && !queue && (
         <Meter
           value={percent / 100}
           label={t("chat.qa.renderProgress", { percent: formatPercent(percent / 100) })}

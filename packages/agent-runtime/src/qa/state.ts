@@ -27,7 +27,7 @@ export type PassDetails = Partial<
 export class QaStateTracker {
   state: TurnQaState | null = null;
   private tail: Promise<unknown> = Promise.resolve();
-  private lastProgress: { percent: number; at: number } | null = null;
+  private lastProgress: { percent: number; at: number; queue: string } | null = null;
 
   constructor(private readonly deps: Pick<QaLoopDeps, "chats" | "chatId" | "turn" | "now">) {}
 
@@ -90,15 +90,22 @@ export class QaStateTracker {
     const percent = Math.max(0, Math.min(100, Math.round(progress.percent)));
     const now = this.deps.now();
     const last = this.lastProgress;
+    // Entering, leaving or moving up the render queue is always shown at once, whatever the percent did.
+    const queue = progress.queue ? `${progress.queue.position}|${progress.queue.holder}` : "";
     if (
       last &&
+      last.queue === queue &&
       percent < 100 &&
       percent - last.percent < PROGRESS_STEP &&
       now - last.at < PROGRESS_INTERVAL_MS
     )
       return;
-    this.lastProgress = { percent, at: now };
-    pass.progress = { percent, stage: progress.stage };
+    this.lastProgress = { percent, at: now, queue };
+    pass.progress = {
+      percent,
+      stage: progress.stage,
+      ...(progress.queue && { queue: progress.queue }),
+    };
     void this.publish().catch(() => undefined);
   }
 

@@ -145,10 +145,18 @@ export class HttpEditingHost implements EditingHost {
     try {
       for await (const event of this.progressEvents(jobId, signal)) {
         // A render queued behind another one is waiting, not finished and not stuck: it carries on (only the
-        // caller's signal ends the wait) and says where it stands. The wait is not render time: nothing here
+        // caller's signal ends the wait) and reports where it stands as structured data (the UI words it). The wait is not render time: nothing here
         // bounds the render, and the stream keeps beating while queued.
         const queued = event.status === "queued";
-        onProgress({ progress: event.progress, stage: queued ? queueStage(event) : event.stage });
+        onProgress(
+          queued
+            ? {
+                progress: 0,
+                stage: null,
+                queue: { position: event.queuePosition, holder: event.queueHolder },
+              }
+            : { progress: event.progress, stage: event.stage },
+        );
         if (!queued && event.status !== "rendering") {
           final = { status: event.status, error: event.error };
           break;
@@ -314,13 +322,6 @@ interface ProgressEvent {
   error: string | null;
   queuePosition: number | null;
   queueHolder: string | null;
-}
-
-/** What a render waiting for the machine's render slot shows where a render stage would be. */
-function queueStage(event: ProgressEvent): string {
-  const place = event.queuePosition === null ? "" : ` (position ${event.queuePosition})`;
-  const behind = event.queueHolder === null ? "" : `, behind ${event.queueHolder}`;
-  return `Waiting in the render queue${place}${behind}`;
 }
 
 /** One `progress` event of the render SSE stream (`event:` + `data:` lines), or null for anything else. */

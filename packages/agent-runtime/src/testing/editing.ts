@@ -49,6 +49,8 @@ export class FakeEditingHost implements EditingHost {
   applyGate: Promise<void> | null = null;
   /** While set, `render` waits for it (or for an abort) before answering. */
   renderGate: Promise<void> | null = null;
+  /** Progress reports `render` makes after "starting" (a queue place, a percent), before it finishes. */
+  renderProgressScript: RenderProgress[] = [];
 
   readonly applyRequests: ApplyEditsRequest[] = [];
   /** The signal each `apply` was given, so tests can see when the caller stopped waiting for it. */
@@ -155,6 +157,7 @@ export class FakeEditingHost implements EditingHost {
     if (signal.aborted) throw new EditingError("aborted", "The render was cancelled.");
     this.renderRequests.push(request);
     onProgress({ progress: 0, stage: "starting" });
+    for (const update of this.renderProgressScript) onProgress(update);
     if (this.renderGate) {
       const gate = this.renderGate;
       await new Promise<void>((resolve, reject) => {

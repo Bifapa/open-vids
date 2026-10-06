@@ -6,13 +6,14 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
+  statSync,
   utimesSync,
   writeFileSync,
 } from "node:fs";
 import { once } from "node:events";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { processStartKey } from "../history/ownerLock";
 import { RenderQueue, type RenderTicket } from "./renderQueue";
 
@@ -24,6 +25,7 @@ afterEach(() => {
   for (const ticket of tickets.splice(0)) ticket.release();
   for (const child of children.splice(0)) child.kill("SIGKILL");
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  vi.useRealTimers();
 });
 
 function queueIn(overrides: { staleMs?: number } = {}): { queue: RenderQueue; dir: string } {
@@ -254,17 +256,108 @@ describe("RenderQueue eviction", () => {
     expect(ticket.standing().held).toBe(true);
   });
 
-  it("keeps a live holder whose start matches even after a quiet spell", async () => {
-    const { queue, dir } = queueIn();
+  it("keeps a live holder whose start matches however long it has been quiet (a sleeping or busy owner is not dead)", async () => {
+    // The check is by process start where that is cheap to read; Windows falls back to the stale limit.
+    if (process.platform === "win32") return;
+    const { queue, dir } = queueIn({ staleMs: 500 });
     const child = aliveChild();
     const start = await processStartKey(child.pid);
     writeForeign(
       dir,
       { pid: child.pid, start, project: "Slow" },
-      { enqueuedAt: 1, slot: true, ageMs: 10_000 },
+      { enqueuedAt: 1, slot: true, ageMs: 60_000 },
     );
     const ticket = await join_(queue, "Mine");
     await sleep(200);
     expect(ticket.standing()).toMatchObject({ held: false, holder: "Slow" });
+    expect(ticketFiles(dir)).toHaveLength(2);
+  });
+});
+
+describe("RenderQueue after the machine sleeps", () => {
+  it("does not take a holder for dead while this process itself was just suspended", async () => {
+    const { queue, dir } = queueIn({ staleMs: 500 });
+    // A live holder whose start cannot be checked: only its heartbeat age could condemn it.
+    const child = aliveChild();
+    writeForeign(
+      dir,
+      { pid: child.pid, start: null, project: "Sleeper" },
+      { enqueuedAt: 1, slot: true },
+    );
+    const waiter = await join_(queue, "Mine");
+    expect(waiter.standing()).toMatchObject({ held: false, holder: "Sleeper" });
+
+    // The wall clock jumps ten minutes while no timer ran: every heartbeat now looks ten minutes old.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(Date.now() + 600_000);
+    await sleep(120);
+    expect(waiter.standing().held).toBe(false);
+    expect(existsSync(join(dir, "slot.json"))).toBe(true);
+
+    // The holder had its chance to beat and did not: it is dead after all. (A small step: a bigger one would read as
+    // another suspension.)
+    vi.setSystemTime(Date.now() + 100);
+    expect(await waiter.granted).toBe(true);
+  });
+
+  it("never refreshes a slot that names another ticket (a holder taken for dead keeps its own render, not the new one's slot)", async () => {
+    const { queue, dir } = queueIn();
+    const holder = await join_(queue, "Evicted");
+    expect(holder.standing().held).toBe(true);
+    // Someone took the slot over while this process slept.
+    const child = aliveChild();
+    writeForeign(dir, { pid: child.pid, start: null, project: "Taker" }, { enqueuedAt: 2 });
+    const slot = join(dir, "slot.json");
+    writeFileSync(
+      slot,
+      JSON.stringify({ ticket: "foreign-2", pid: child.pid, start: null, project: "Taker" }),
+    );
+    const old = new Date(Date.now() - 1_000);
+    utimesSync(slot, old, old);
+    const before = statSync(slot).mtimeMs;
+
+    await sleep(200); // several heartbeats of the evicted holder
+    expect(JSON.parse(readFileSync(slot, "utf-8")).ticket).toBe("foreign-2");
+    expect(statSync(slot).mtimeMs).toBe(before);
+    // And its release leaves the taker's slot alone.
+    holder.release();
+    expect(existsSync(slot)).toBe(true);
+  });
+
+  it("restores a slot that vanished under its holder", async () => {
+    const { queue, dir } = queueIn();
+    const holder = await join_(queue, "Alpha");
+    rmSync(join(dir, "slot.json"));
+    await until(() => existsSync(join(dir, "slot.json")), "the holder to restore its slot");
+    expect(JSON.parse(readFileSync(join(dir, "slot.json"), "utf-8")).ticket).toBe(holder.id);
+  });
+});
+
+describe("RenderQueue orphan slot", () => {
+  it("frees a slot whose ticket is gone (a release that could not remove it), without waiting out the stale limit", async () => {
+    const { queue, dir } = queueIn();
+    // The writer is alive and verified (this process), but nothing renders for the named ticket any more.
+    const slot = join(dir, "slot.json");
+    writeFileSync(
+      slot,
+      JSON.stringify({ ticket: "released", pid: process.pid, start: null, project: "Done" }),
+    );
+    const old = new Date(Date.now() - 2_000);
+    utimesSync(slot, old, old);
+    const ticket = await join_(queue, "Mine");
+    expect(await ticket.granted).toBe(true);
+    expect(JSON.parse(readFileSync(slot, "utf-8")).ticket).toBe(ticket.id);
+  });
+
+  it("leaves a slot just claimed by a ticket the listing predates", async () => {
+    const { queue, dir } = queueIn();
+    const slot = join(dir, "slot.json");
+    writeFileSync(
+      slot,
+      JSON.stringify({ ticket: "just-now", pid: process.pid, start: null, project: "Fresh" }),
+    );
+    const ticket = await join_(queue, "Mine");
+    await sleep(60);
+    expect(ticket.standing()).toMatchObject({ held: false, holder: "Fresh" });
   });
 });

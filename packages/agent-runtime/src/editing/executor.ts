@@ -3,8 +3,9 @@ import {
   PRESET_KINDS,
   type AgentId,
   type EditorContext,
+  type RenderQueuePlace,
 } from "@hyperframes/agent-protocol";
-import type { HostToolResult, ToolProgress } from "../backend.js";
+import type { HostToolResult, ProgressLabel, ToolProgress } from "../backend.js";
 import { errorMessage } from "../errors.js";
 import type { WriteLeases } from "../writeLeases.js";
 import { SeenVersions, runEditTimeline } from "./apply.js";
@@ -246,7 +247,7 @@ export class TurnEditing {
         const output = await host.render(
           { ...(composition && { composition }), quality },
           signal,
-          (update) => progress?.(update.progress),
+          (update) => progress?.(update.progress, renderRowLabel(update.queue)),
         );
         this.lastRenderOutput = {
           path: output.path,
@@ -259,4 +260,26 @@ export class TurnEditing {
       }
     }
   }
+}
+
+/**
+ * The `render_video` row's label while the render waits in Studio's render queue (it says where, in the user's language
+ * through the `activity.rendering_video_queued*` keys) and again once it renders. The codes are written out so the
+ * activity-code scan sees each of them.
+ */
+function renderRowLabel(queue: RenderQueuePlace | undefined): ProgressLabel {
+  if (!queue) return { label: "Rendering video", labelCode: "rendering_video" };
+  const position = queue.position ?? 1;
+  if (queue.holder === null) {
+    return {
+      label: `Rendering video · queued (${position})`,
+      labelCode: "rendering_video_queued",
+      labelParams: { position },
+    };
+  }
+  return {
+    label: `Rendering video · queued (${position}), ${queue.holder} is rendering`,
+    labelCode: "rendering_video_queued_behind",
+    labelParams: { position, project: queue.holder },
+  };
 }

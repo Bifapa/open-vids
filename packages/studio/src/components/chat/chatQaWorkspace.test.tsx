@@ -101,6 +101,30 @@ it("shows how far a rendering pass is and how long it has been running", () => {
   expect(text(byTestId(row, "qa-pass-elapsed"))).toMatch(/^01:0[5-9]$/);
 });
 
+it("shows a pass whose render waits in the render queue as queued, with its place and who is rendering, and no meter", () => {
+  mountQa(
+    qaState(
+      [
+        qaPass({
+          phase: "rendering",
+          reportId: null,
+          renderPath: null,
+          endedAt: undefined,
+          startedAt: Date.now() - 5_000,
+          progress: { percent: 0, stage: null, queue: { position: 2, holder: "Promo" } },
+        }),
+      ],
+      { status: "running" },
+    ),
+  );
+
+  const row = passRow(1);
+  expect(text(byTestId(row, "qa-pass-phase"))).toBe("Queued…");
+  expect(text(byTestId(row, "qa-pass-queue"))).toContain("Queued · 2nd");
+  expect(text(byTestId(row, "qa-pass-queue"))).toContain("Promo is rendering");
+  expect(byTestId(row, "qa-pass-progress")).toBeNull();
+});
+
 it("shows no progress meter once the render is over, and the time the pass took", () => {
   mountQa(
     qaState([

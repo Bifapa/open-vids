@@ -286,16 +286,23 @@ export class TurnEventWriter {
     if (!group || !group.closed || group.activity.status !== "running") return;
     const percent = Math.max(0, Math.min(100, Math.round(progress)));
     const current = group.activity;
-    const relabelled = label !== undefined && label.labelCode !== current.labelCode;
+    const relabelled =
+      label !== undefined &&
+      (label.labelCode !== current.labelCode ||
+        JSON.stringify(label.labelParams) !== JSON.stringify(current.labelParams));
     if (current.progress === percent && !relabelled) return;
+    if (!relabelled) {
+      this.publishActivity({ ...current, progress: percent });
+      return;
+    }
+    // The new label replaces the old one whole: its parameters too, including having none.
+    const { labelParams: _previous, ...rest } = current;
     this.publishActivity({
-      ...current,
+      ...rest,
       progress: percent,
-      ...(relabelled && {
-        label: label.label,
-        labelCode: label.labelCode,
-        ...(label.labelParams ? { labelParams: label.labelParams } : {}),
-      }),
+      label: label.label,
+      labelCode: label.labelCode,
+      ...(label.labelParams && { labelParams: label.labelParams }),
     });
   }
 

@@ -1071,12 +1071,22 @@ export const QA_PASS_PHASES = [
 ] as const;
 export type QaPassPhase = (typeof QA_PASS_PHASES)[number];
 
+/** Where a render waiting for the machine's render slot stands (Studio's render queue; one render runs at a time). */
+export interface RenderQueuePlace {
+  /** 1 for the next render to start, 2 for the one after it; null when the queue did not say. */
+  position: number | null;
+  /** The project whose render holds the slot now; null when the queue did not say. */
+  holder: string | null;
+}
+
 /** A render's progress as the chat shows it. */
 export interface QaPassProgress {
   /** 0–100. */
   percent: number;
   /** What the renderer is doing now, when it says. */
   stage: string | null;
+  /** Set while the render waits in the queue instead of rendering (`percent` is 0 then). */
+  queue?: RenderQueuePlace;
 }
 
 export interface QaPassState {

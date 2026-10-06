@@ -530,6 +530,38 @@ describe("the QA card's live state", () => {
     }
   });
 
+  it("shows a render that waits in Studio's render queue as queued data, then as the render it becomes", async () => {
+    const fixture = await createRuntimeFixture();
+    try {
+      fixture.editing.renderProgressScript = [
+        { progress: 0, stage: null, queue: { position: 2, holder: "Promo" } },
+        { progress: 0, stage: null, queue: { position: 1, holder: "Promo" } },
+        { progress: 0, stage: null, queue: { position: 1, holder: "Promo" } },
+        { progress: 1, stage: "capture" },
+      ];
+      const chatId = await qaChat(fixture, quality(1));
+      const director = directorScript(fixture);
+      script(fixture, { director: director.run, vision: visionScript([]) });
+      await fixture.turns.start(chatId, { prompt: "Add B-roll" });
+      await settled(fixture, chatId);
+
+      const progress = fixture.chats
+        .events(chatId)
+        .flatMap((event) => (event.type === "qa.updated" ? [event.qa.passes[0]?.progress] : []))
+        .filter((entry) => entry !== undefined);
+      // The same place twice in a row is one publication; leaving the queue is shown even at a 1 % step.
+      expect(progress).toEqual([
+        { percent: 0, stage: "starting" },
+        { percent: 0, stage: null, queue: { position: 2, holder: "Promo" } },
+        { percent: 0, stage: null, queue: { position: 1, holder: "Promo" } },
+        { percent: 1, stage: "capture" },
+        { percent: 100, stage: "done" },
+      ]);
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
   it("marks which passes' renders are still in the project once the session ended", async () => {
     const fixture = await createRuntimeFixture();
     try {

@@ -311,10 +311,13 @@ Director's transaction is open the history engine attributes it to the turn.
   never leaves a half-applied batch. Reads and applies also carry generous ceilings (2 min / 10 min).
 - Renders run one at a time on the machine (Studio's render queue, shared with the user's own exports and other
   projects): a render asked for while another runs streams `queued` progress events (`queuePosition`, `queueHolder`).
-  `HttpEditingHost.render` keeps waiting through them (it reports `Waiting in the render queue (position N), behind
-<project>` as the stage, with no deadline of its own: only the turn's signal ends the wait) and only a status other than
-  `queued`/`rendering` is final. The QA calls that carry timeouts (`QA_TIMEOUTS_MS`) all start after the render has
-  finished, so queue wait is never counted against them.
+  `HttpEditingHost.render` keeps waiting through them (no deadline of its own: only the turn's signal ends the wait) and
+  only a status other than `queued`/`rendering` is final. The place is reported as data, `RenderProgress.queue`
+  (`{position, holder}`), never as text: `render_video`'s activity row switches to `activity.rendering_video_queued`
+  / `rendering_video_queued_behind` (parameters `position`, `project`) and back to `rendering_video`, and a Render QA
+  pass carries `progress.queue` (the card shows "Queued", the place and who is rendering, with no meter). The QA calls
+  that carry timeouts (`QA_TIMEOUTS_MS`) all start after the render has finished, so queue wait is never counted
+  against them.
 - **`edit_timeline` runtime behaviour** (`src/editing/apply.ts`): the runtime, not the model, owns the
   turn id, the base version and the request id. `baseVersion` defaults to the version of the
   composition last read or applied this turn (`SeenVersions`), so a change made behind the agent's

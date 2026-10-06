@@ -25,9 +25,11 @@ import { ownStartKey, processStartKey, sameStart } from "../history/ownerLock.js
  *                                       one process gets it however the tickets race.
  *
  * Order is FIFO by ticket name. The oldest live ticket claims the free slot. Both files carry a heartbeat (their mtime,
- * touched every heartbeat period); an owner is dead when its pid is gone, when its process started at another time than
- * the file says (a reused pid), or when it has not beaten for a long while. Anyone who finds a dead ticket or slot
- * removes it, so a SIGKILLed render frees the queue at once.
+ * touched every heartbeat period). An owner is dead when its pid is gone or its process started at another time than
+ * the file says (a reused pid); where the start cannot be checked cheaply (Windows) also when it has not beaten for a
+ * long while. A live, start-verified owner is never judged by its heartbeat age: a sleeping machine stops every timer.
+ * Anyone who finds a dead ticket or slot removes it, so a SIGKILLed render frees the queue at once; a holder only ever
+ * refreshes a slot that names its own ticket.
  */
 
 /** Queue folder: `$OPENVIDS_RENDER_QUEUE_DIR`, else `~/.openvids/render-queue`. */
@@ -38,9 +40,11 @@ export function defaultRenderQueueDir(): string {
 const HEARTBEAT_MS = 5_000;
 /** A heartbeat this many periods old makes a live pid suspect: the process start is compared (where that is cheap). */
 const SUSPECT_BEATS = 3;
-/** A heartbeat this old is dead whatever the pid says (Windows, where starts are not looked up per check). */
+/** Where a start cannot be verified (Windows), a heartbeat this old is dead whatever the pid says. */
 const STALE_MS = 3 * 60_000;
 const POLL_MS = 250;
+/** How long a process-start lookup is trusted: long enough not to spawn `ps` per poll, short against pid reuse. */
+const START_CACHE_MS = 30_000;
 const SLOT_FILE = "slot.json";
 const TICKET_SUFFIX = ".ticket";
 const MAX_PROJECT_NAME = 200;
@@ -204,8 +208,14 @@ export class RenderQueue {
   private readonly pollMs: number;
   private readonly heartbeatMs: number;
   private readonly staleMs: number;
-  /** Whether a ticket's process start matched, by ticket id: a start never changes, a lookup spawns a process. */
-  private readonly startMatches = new Map<string, boolean>();
+  /** Whether a process still has the start a file names, by pid and start: a lookup spawns a process, so it is kept briefly. */
+  private readonly startMatches = new Map<string, { matches: boolean; at: number }>();
+  /** Tickets of this queue that wait for the slot (they poll). */
+  private waiting = 0;
+  /** When this queue last looked at the folder; a long gap means this process was suspended (sleep, SIGSTOP). */
+  private lastSurveyAt = 0;
+  /** Until then a quiet heartbeat proves nothing: the others were suspended with this process and have not beaten yet. */
+  private graceUntil = 0;
 
   constructor(private readonly options: RenderQueueOptions = {}) {
     this.pollMs = options.pollMs ?? POLL_MS;
@@ -231,6 +241,15 @@ export class RenderQueue {
     const ticketBody = JSON.stringify({ id, enqueuedAt, ...who });
     const slotBody = JSON.stringify({ ticket: id, ...who });
     linkNew(ticketFile, ticketBody);
+    // Nobody polled before this ticket: the gap since the last look says nothing about a suspension.
+    if (this.waiting === 0) this.lastSurveyAt = Date.now();
+    this.waiting += 1;
+    let counted = true;
+    const stopWaiting = (): void => {
+      if (!counted) return;
+      counted = false;
+      this.waiting -= 1;
+    };
 
     let standing: QueueStanding = { held: false, position: 1, holder: null };
     let finished = false;
@@ -257,7 +276,12 @@ export class RenderQueue {
       if (finished) return;
       try {
         if (!touch(ticketFile)) linkNew(ticketFile, ticketBody);
-        if (standing.held && !touch(slotFile)) linkNew(slotFile, slotBody);
+        if (!standing.held) return;
+        // Only a slot that names this ticket is refreshed. One that names another was taken over (this process was
+        // suspended long enough to be taken for dead): refreshing it would keep that new holder's slot alive for good.
+        const slot = readFileRecord(slotFile, parseSlot);
+        if (slot === null) linkNew(slotFile, slotBody);
+        else if (slot.record?.ticket === id) touch(slotFile);
       } catch {
         // The folder is gone or unwritable for the moment; the next beat tries again.
       }
@@ -271,7 +295,9 @@ export class RenderQueue {
         clearInterval(heartbeat);
         clearTimeout(polling);
         heldTickets.delete(handle);
-        // Only the slot this ticket holds: a release never takes a later holder's slot.
+        stopWaiting();
+        // Only the slot this ticket holds: a release never takes a later holder's slot. A slot that cannot be removed
+        // right now (Windows sharing violation) is an orphan once its ticket is gone: the next survey evicts it.
         if (readFileRecord(slotFile, parseSlot)?.record?.ticket === id) drop(slotFile);
         drop(ticketFile);
         listeners.clear();
@@ -289,6 +315,7 @@ export class RenderQueue {
         if (finished) return;
         const waiting = view.tickets.filter((t) => t.record.id !== view.slot?.record.ticket);
         if (!view.slot && waiting[0]?.record.id === id && linkNew(slotFile, slotBody)) {
+          stopWaiting();
           publish({ held: true, position: 0, holder: null });
           settle(true);
           return;
@@ -336,6 +363,11 @@ export class RenderQueue {
   ): Promise<{ tickets: Seen<TicketRecord>[]; slot: Seen<SlotRecord> | null }> {
     const now = Date.now();
     const suspectMs = this.heartbeatMs * SUSPECT_BEATS;
+    // Timers do not run while the machine sleeps and the wall clock jumps on wake: a long gap since this queue last
+    // looked means every heartbeat looks old, the live holder's too. Give the holders a couple of beats to show up.
+    if (now - this.lastSurveyAt > this.staleMs / 2) this.graceUntil = now + 2 * this.heartbeatMs;
+    this.lastSurveyAt = now;
+    const trustQuiet = now >= this.graceUntil;
     const tickets: Seen<TicketRecord>[] = [];
     const present = new Set<string>();
     for (const name of readdirSync(dir).sort()) {
@@ -355,22 +387,26 @@ export class RenderQueue {
         if (now - seen.mtimeMs > suspectMs) drop(file);
         continue;
       }
-      if (file !== ownTicketFile && !(await this.holds(record, record.id, seen.mtimeMs, now))) {
+      if (file !== ownTicketFile && !(await this.holds(record, seen.mtimeMs, now, trustQuiet))) {
         drop(file);
         continue;
       }
       present.add(record.id);
       tickets.push({ file, record, mtimeMs: seen.mtimeMs });
     }
-    for (const id of [...this.startMatches.keys()]) {
-      if (!present.has(id.replace(/^slot:/, ""))) this.startMatches.delete(id);
-    }
 
     let slot: Seen<SlotRecord> | null = null;
     const slotSeen = readFileRecord(slotFile, parseSlot);
     if (slotSeen) {
       const { record } = slotSeen;
-      if (record && (await this.holds(record, `slot:${record.ticket}`, slotSeen.mtimeMs, now))) {
+      // A slot whose ticket is gone (a release that could not remove it) holds nothing; it is told from a slot just
+      // claimed by a ticket this listing predates by being older than a few beats.
+      const orphan =
+        record !== null &&
+        !present.has(record.ticket) &&
+        trustQuiet &&
+        now - slotSeen.mtimeMs > suspectMs;
+      if (record && !orphan && (await this.holds(record, slotSeen.mtimeMs, now, trustQuiet))) {
         slot = { file: slotFile, record, mtimeMs: slotSeen.mtimeMs };
       } else if (tickets.length === 0 || tickets[0]?.file === ownTicketFile) {
         // Only the oldest waiter evicts, so evictors do not pile up.
@@ -381,25 +417,41 @@ export class RenderQueue {
   }
 
   /**
-   * Whether the process that wrote a ticket or slot still runs. A fresh heartbeat of a live pid is enough; one that
-   * has gone quiet makes the pid suspect (it may belong to a stranger now), so the process start is compared where
-   * that is a cheap read, and a heartbeat quiet for the stale limit is dead everywhere. A process whose start cannot
-   * be told counts as the owner: better a wait than two renders at once.
+   * Whether the process that wrote a ticket or slot still runs. A live pid with a fresh heartbeat is the owner. Once
+   * the heartbeat has gone quiet the pid is suspect (it may belong to a stranger now) and its start decides: where that
+   * is a cheap read (macOS, Linux) a process that started when the file says is the owner however long it has been
+   * quiet, because a suspended or busy owner is not a dead one. Only where the start cannot be told (Windows, where
+   * PowerShell takes seconds per query; a file without one) does the stale limit decide, and not right after this
+   * process was itself suspended (`trustQuiet`). A process whose start cannot be read counts as the owner: better a
+   * wait than two renders at once.
    */
-  private async holds(who: Who, key: string, mtimeMs: number, now: number): Promise<boolean> {
+  private async holds(
+    who: Who,
+    mtimeMs: number,
+    now: number,
+    trustQuiet: boolean,
+  ): Promise<boolean> {
     if (!pidAlive(who.pid)) return false;
     const quiet = now - mtimeMs;
-    if (quiet > this.staleMs) return false;
-    if (quiet <= this.heartbeatMs * SUSPECT_BEATS || who.start === null) return true;
-    if (who.pid === process.pid) return true;
-    // Windows has no cheap lookup (PowerShell takes seconds per query): the stale rule covers it.
-    if (process.platform === "win32") return true;
-    let matches = this.startMatches.get(key);
-    if (matches === undefined) {
-      const current = await processStartKey(who.pid);
-      matches = current === null || sameStart(current, who.start);
-      this.startMatches.set(key, matches);
+    if (quiet <= this.heartbeatMs * SUSPECT_BEATS) return true;
+    if (who.start !== null) {
+      if (who.pid === process.pid) return true;
+      if (process.platform !== "win32") return this.startsAt(who.pid, who.start, now);
     }
+    return !trustQuiet || quiet <= this.staleMs;
+  }
+
+  /** Whether process `pid` started when `start` says (or cannot be asked). Remembered for {@link START_CACHE_MS}. */
+  private async startsAt(pid: number, start: string, now: number): Promise<boolean> {
+    const key = `${pid}|${start}`;
+    const known = this.startMatches.get(key);
+    if (known && now - known.at < START_CACHE_MS) return known.matches;
+    const current = await processStartKey(pid);
+    const matches = current === null || sameStart(current, start);
+    for (const [other, entry] of this.startMatches) {
+      if (now - entry.at >= START_CACHE_MS) this.startMatches.delete(other);
+    }
+    this.startMatches.set(key, { matches, at: now });
     return matches;
   }
 

@@ -480,7 +480,11 @@ export class QaPassRunner {
         ? "standard"
         : "draft";
     const output = await deps.editing.render({ quality }, signal, (progress) =>
-      this.tracker.progress(plan.pass, { percent: progress.progress, stage: progress.stage }),
+      this.tracker.progress(plan.pass, {
+        percent: progress.progress,
+        stage: progress.stage,
+        ...(progress.queue && { queue: progress.queue }),
+      }),
     );
     session.produced.push(output.path);
     session.latestRender = output.path;

@@ -5,6 +5,7 @@ import type {
   PresetInfo,
   PresetKind,
   ProjectAsset,
+  RenderQueuePlace,
   ProjectInventory,
   TimelineSnapshot,
 } from "@hyperframes/agent-protocol";
@@ -22,6 +23,8 @@ export interface RenderProgress {
   /** 0–100. */
   progress: number;
   stage: string | null;
+  /** Set while the render waits for the machine's render slot instead of rendering. */
+  queue?: RenderQueuePlace;
 }
 
 /** A finished, probed render output. */
