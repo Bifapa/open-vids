@@ -36,6 +36,19 @@ pub struct HomeServer {
 impl HomeServer {
     pub fn bind(recents_path: PathBuf, thumbs_dir: PathBuf) -> std::io::Result<Self> {
         let inner = HomeInner::load(recents_path, thumbs_dir)?;
+        // A crash mid-fork leaves a hidden temporary copy beside its source: remove those off the start path.
+        let parents: Vec<PathBuf> = inner
+            .recents
+            .entries()
+            .iter()
+            .filter_map(|entry| entry.dir.parent().map(Path::to_path_buf))
+            .collect();
+        thread::spawn(move || {
+            let removed = super::project_copy::sweep_leftovers(&parents);
+            if removed > 0 {
+                super::logfile::shell(&format!("removed {removed} unfinished project copies"));
+            }
+        });
         let accept = TcpListener::bind(("127.0.0.1", 0))?;
         let port = accept.local_addr()?.port();
         let token = HomeToken::generate();
@@ -716,6 +729,29 @@ mod tests {
         assert_eq!(file["mode"], "any");
         assert_eq!(file["websites"]["readLinkedPages"], false);
         assert_eq!(file["websites"]["fullAccess"], true);
+    }
+
+    #[test]
+    fn fork_routes_are_gated_and_answer_without_starting_anything_for_a_bad_request() {
+        let (server, origin) = spawn("fork-routes");
+        let token = server.token_for_test();
+        for (method, path) in [("GET", "/api/fork/state"), ("POST", "/api/fork"), ("POST", "/api/fork/cancel")] {
+            let (code, _) = send(&origin, method, path, None, b"{}");
+            assert_eq!(code, 403, "{method} {path} needs the token");
+        }
+        let json = |body: &[u8]| serde_json::from_slice::<serde_json::Value>(body).unwrap();
+        let (code, body) = send(&origin, "GET", "/api/fork/state", Some(&token), b"");
+        assert_eq!(code, 200);
+        assert_eq!(json(&body)["phase"], "idle");
+        let (code, body) = send(&origin, "POST", "/api/fork", Some(&token), br#"{"id":"nope"}"#);
+        assert_eq!(code, 404);
+        assert_eq!(json(&body)["code"], "unknown_project");
+        let (code, _) = send(&origin, "GET", "/api/fork", Some(&token), b"");
+        assert_eq!(code, 405);
+        let (code, _) = send(&origin, "POST", "/api/fork/nope", Some(&token), b"{}");
+        assert_eq!(code, 404);
+        let (_, body) = send(&origin, "GET", "/api/fork/state", Some(&token), b"");
+        assert_eq!(json(&body)["phase"], "idle", "nothing started");
     }
 
     // The fake CLI is a JS file run by the same bun the app ships, so this runs on every platform.

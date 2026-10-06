@@ -16,6 +16,7 @@ import type { ChatEvent, ChatState, ChatSummary, SpecialistId } from "@hyperfram
 import { foldChatEvents, isRecord, isStoryOffer } from "@hyperframes/agent-protocol";
 import { RuntimeError } from "../errors.js";
 import { LockBusyError, takeLock } from "../processLock.js";
+import { readForkedAt, retireCheckpointsBefore } from "./forkMarker.js";
 
 const agentRoot = (projectDir: string) => join(projectDir, ".hyperframes", "agent", "chats");
 const chatDirectory = (projectDir: string, chatId: string) => {
@@ -73,7 +74,7 @@ export class FileChatStore {
       if (isMissing(error)) return "";
       throw error;
     });
-    const parsed = parseLog(file, contents);
+    const parsed = parseLog(file, contents, readForkedAt(this.projectDir));
     if (parsed.torn) await truncate(file, parsed.bytes);
     this.sizes.set(chatId, parsed.bytes);
     return parsed.loaded;
@@ -88,7 +89,7 @@ export class FileChatStore {
     } catch (error) {
       if (!isMissing(error)) throw error;
     }
-    const parsed = parseLog(file, contents);
+    const parsed = parseLog(file, contents, readForkedAt(this.projectDir));
     if (parsed.torn) truncateSync(file, parsed.bytes);
     this.sizes.set(chatId, parsed.bytes);
     return parsed.loaded;
@@ -259,7 +260,7 @@ interface ParsedLog {
   bytes: number;
 }
 
-function parseLog(file: string, contents: string): ParsedLog {
+function parseLog(file: string, contents: string, forkedAt: number | null): ParsedLog {
   const lines = contents.split("\n");
   const completeLineCount = lines.length - 1;
   const torn = contents.length > 0 && !contents.endsWith("\n");
@@ -276,7 +277,9 @@ function parseLog(file: string, contents: string): ParsedLog {
     else
       console.error(`[openvids-agent] skipping invalid chat event at line ${index + 1} of ${file}`);
   }
-  return { loaded: { events, state: foldChatEvents(events), bytes }, torn, bytes };
+  // A copied project keeps its chats, not the history behind their checkpoints (see forkMarker.ts).
+  const shown = forkedAt === null ? events : retireCheckpointsBefore(events, forkedAt);
+  return { loaded: { events: shown, state: foldChatEvents(shown), bytes }, torn, bytes };
 }
 
 function isMissing(error: unknown): boolean {

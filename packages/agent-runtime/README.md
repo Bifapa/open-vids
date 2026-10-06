@@ -721,6 +721,8 @@ project ended **unchanged** but the Director (or its team) called a project-chan
 carries a `<reverted-turns>` block (`src/revertedTurns.ts`) listing the turns reverted since the previous turn started,
 so the Director does not describe their edits as present.
 
+**Forked projects.** The desktop shell copies chats when it forks or duplicates a project and writes `.hyperframes/agent/fork.json` (`{ "forkedAt": <epoch ms> }`). The history entries behind the checkpoints of turns that started earlier stay in the original's history (the copy gets its own, empty one), so `FileChatStore` (`src/store/forkMarker.ts`) drops those turns' checkpoints whenever it reads a chat log: no "Revert this turn" for them, replayed events included. A turn that was reverted before the fork keeps its "Reverted" mark without "Undo revert". The stored log is not rewritten by this. Turns started after the marker are ordinary.
+
 Afterwards the Director gets one `<render-qa-final>` prompt (outcome, last render, fixed vs remaining issues) to report; in
 it `edit_timeline`, `build_rough_cut`, `build_story`, `rebuild_story`, `edit_story`, `render_video`, `delegate`, `jev`,
 `import_asset` and `resolve_missing_asset` are refused (`src/qa/phase.ts`). Steering sent during QA opens the next Director

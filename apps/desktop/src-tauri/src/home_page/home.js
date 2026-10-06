@@ -350,6 +350,7 @@
     media: r.clips || 0,
     missing: !!r.missing,
     thumb: r.thumb || null,
+    forkedFrom: r.forked_from || null,
   });
   function load(then) {
     return api("/api/recents")
@@ -437,7 +438,19 @@
           esc(fmtOpened(p.ts)) +
           '</span><span class="mid">·</span><span>' +
           esc(fmtMedia(p.media)) +
-          "</span>";
+          "</span>" +
+          forkedHtml(p);
+  }
+  /* "Fork of X": the project this one was forked from (meta.json forkedFrom), beside the card's meta line. */
+  function forkedHtml(p) {
+    return p.forkedFrom
+      ? '<span class="mid">·</span><span class="forked" title="' +
+          th("home.item.forkedFrom", { name: p.forkedFrom }) +
+          '">' +
+          ic("fork", 11) +
+          th("home.item.forkedFrom", { name: p.forkedFrom }) +
+          "</span>"
+      : "";
   }
   function attrs(p, cls, tab) {
     const on = p.id === S.sel;
@@ -530,6 +543,14 @@
       '">' +
       nameHtml(p) +
       "</div>" +
+      (p.forkedFrom && !p.missing
+        ? '<span class="forked" title="' +
+          th("home.item.forkedFrom", { name: p.forkedFrom }) +
+          '">' +
+          ic("fork", 11) +
+          th("home.item.forkedFrom", { name: p.forkedFrom }) +
+          "</span>"
+        : "") +
       st +
       "</div>" +
       '<span class="cell">' +
@@ -856,6 +877,7 @@
       { label: th("home.item.rename"), icon: "pencil", kbd: "F2", act: () => startRename(p, at) },
       { label: revealLabel, icon: "folder", kbd: revealKbd, act: () => reveal(p) },
       { label: th("home.item.duplicate"), icon: "copy", kbd: dupKbd, act: () => duplicate(p, at) },
+      { label: th("home.item.fork"), icon: "fork", act: () => fork(p, at) },
       { sep: 1 },
       {
         label: th("home.item.removeFromRecent"),
@@ -905,6 +927,88 @@
         }),
       )
       .catch(fail("home.error.duplicate", { name: p.name }));
+  }
+  /* Fork: a copy with lineage, made in the background (a project can be gigabytes). The page shows progress with
+     Cancel, then opens the fork. */
+  let forkTimer = null,
+    forkOverlay = null;
+  function paintForking(st, p) {
+    if (!forkOverlay) return;
+    const pct = st.total > 0 ? Math.min(100, Math.floor((st.done / st.total) * 100)) : 0;
+    forkOverlay.innerHTML =
+      '<div class="opening-card fork-card"><div class="fork-head"><i class="spinner"></i><span>' +
+      OVI18N.rich(
+        "home.fork.text",
+        { name: p.name },
+        { name: (inner) => '<span class="name">' + inner + "</span>" },
+      ) +
+      '</span></div><div class="fork-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' +
+      pct +
+      '"><i style="width:' +
+      pct +
+      '%"></i></div><div class="fork-foot"><span class="fork-pct">' +
+      th("home.fork.progress", { done: formatBytes(st.done), total: formatBytes(st.total) }) +
+      '</span><button class="link" type="button" data-fork-cancel>' +
+      th("common.cancel") +
+      "</button></div></div>";
+    const cancelBtn = forkOverlay.querySelector("[data-fork-cancel]");
+    cancelBtn.onclick = () => {
+      cancelBtn.disabled = true;
+      api("/api/fork/cancel", {}).catch(fail("home.error.forkCancel"));
+    };
+  }
+  function hideForking() {
+    clearInterval(forkTimer);
+    forkTimer = null;
+    S.opening = null;
+    if (forkOverlay) {
+      forkOverlay.remove();
+      forkOverlay = null;
+    }
+  }
+  function watchFork(p, at) {
+    S.opening = true;
+    forkOverlay = document.createElement("div");
+    forkOverlay.className = "opening";
+    forkOverlay.setAttribute("role", "status");
+    win.appendChild(forkOverlay);
+    paintForking({ done: 0, total: 0 }, p);
+    clearInterval(forkTimer);
+    forkTimer = setInterval(() => {
+      api("/api/fork/state")
+        .then((st) => {
+          if (st.phase === "copying") return paintForking(st, p);
+          hideForking();
+          if (st.phase === "done" && st.project) {
+            load(() => {
+              const c = byId(st.project.id);
+              if (c) openProject(c, at);
+            });
+          } else if (st.phase === "cancelled") {
+            toast(th("home.toast.forkCancelled", { name: p.name }));
+          } else {
+            toast(
+              th("home.error.fork", {
+                name: p.name,
+                message: describeError(st) || tr("home.error.unknown"),
+              }),
+              null,
+              "error",
+            );
+          }
+        })
+        .catch(() => {
+          hideForking();
+          fail("home.error.fork", { name: p.name })(new Error(tr("home.error.unknown")));
+        });
+    }, 300);
+  }
+  function fork(p, at) {
+    if (S.opening) return;
+    closeMenu(false);
+    api("/api/fork", { id: p.id })
+      .then(() => watchFork(p, at))
+      .catch(fail("home.error.fork", { name: p.name }));
   }
   /* Removes from Recent only; Undo puts the same entry back. */
   function remove(p, at) {
@@ -2082,6 +2186,13 @@
     if (settingsFrame) settingsFrame.title = tr("home.settings.title");
     render();
   });
+  /* The page was reloaded while a fork is being made: show it again. */
+  api("/api/fork/state")
+    .then((st) => {
+      if (st.phase !== "copying") return;
+      load(() => watchFork(byId(st.id) || { id: st.id, name: st.name }, null));
+    })
+    .catch(() => undefined);
   /* Opening at launch (Reopen last project / a project named on the command line): show it until Studio is up. */
   api("/api/open-state")
     .then((st) => {

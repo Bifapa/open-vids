@@ -852,8 +852,13 @@ fn relaunch_after_exit() -> std::io::Result<()> {
 
 fn project_activity(app: &tauri::AppHandle) -> Option<Activity> {
     let (origin, id) = crate::open_project_scope(app)?;
-    let path = format!("/api/projects/{}/activity", super::sidecar::urlencode(&id));
-    let body = loopback_get_json(&origin, &path)?;
+    activity_of(&origin, &id)
+}
+
+/// What the Studio server at `origin` says project `id` is doing; `None` when it does not answer.
+pub(crate) fn activity_of(origin: &str, id: &str) -> Option<Activity> {
+    let path = format!("/api/projects/{}/activity", super::sidecar::urlencode(id));
+    let body = loopback_get_json(origin, &path)?;
     Activity::parse(&body)
 }
 

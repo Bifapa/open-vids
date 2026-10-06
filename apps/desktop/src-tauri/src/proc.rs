@@ -163,9 +163,8 @@ pub fn kill_group_now(pid: u32) {
 }
 
 /// Whether `pid` names a live process right now.
-/// Only the tests and the install-job test-support call this today; the
-/// production teardown never polls aliveness (it kills and reaps instead).
-#[cfg_attr(not(test), expect(dead_code))]
+/// The production teardown never polls aliveness (it kills and reaps
+/// instead); copying a project asks it about the agent's lease holder.
 pub fn is_alive(pid: u32) -> bool {
     if pid == 0 {
         return false;

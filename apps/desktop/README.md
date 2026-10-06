@@ -262,6 +262,8 @@ apps/desktop/
     src/home_routes.rs     Home HTTP plumbing: routing, pages/assets, open/pick/thumbs
     src/home_api.rs        Preferences, metadata, duplicate/reveal/locate, recents undo,
                            composer files, start-from-chat, agent-runtime proxy routes
+    src/project_copy.rs    Shared Duplicate/Fork copier: exclusions, temp-sibling build + no-replace rename, lineage in meta.json, crash sweep, refusal while the agent works
+    src/home_fork.rs       POST /api/fork, GET /api/fork/state, POST /api/fork/cancel: the background fork job with progress
     src/home_create.rs     POST /api/create (scaffold, then open)
     src/home_project.rs    Rename (folder + meta.json) and Trash handlers (Recycle Bin via IFileOperation on Windows)
     src/home_auth.rs       Per-launch token + Host/Origin checks

@@ -256,7 +256,7 @@ fn json_string(value: &str) -> String {
     serde_json::to_string(value).unwrap_or_else(|_| format!("{value:?}"))
 }
 
-fn to_package_name(name: &str) -> String {
+pub fn to_package_name(name: &str) -> String {
     let mut out: String = name
         .chars()
         .map(|c| {

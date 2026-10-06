@@ -64,6 +64,7 @@ mod home_agent;
 mod home_api;
 mod home_auth;
 mod home_create;
+mod home_fork;
 mod home_project;
 mod home_report;
 mod home_research;
@@ -79,6 +80,7 @@ mod platform;
 mod prefs;
 mod proc;
 mod project;
+mod project_copy;
 mod project_meta;
 mod recents;
 mod report;
@@ -1311,6 +1313,15 @@ pub(crate) fn open_project_scope(app: &tauri::AppHandle) -> Option<(String, Stri
     let app_state = app.try_state::<Mutex<AppState>>()?;
     let state = app_state.lock().ok()?;
     Some((state.studio_origin.clone()?, state.project.as_ref()?.id.clone()))
+}
+
+/// [`open_project_scope`] when the project the window shows lives in the folder `dir`.
+pub(crate) fn open_project_scope_at(app: &tauri::AppHandle, dir: &Path) -> Option<(String, String)> {
+    let app_state = app.try_state::<Mutex<AppState>>()?;
+    let state = app_state.lock().ok()?;
+    let project = state.project.as_ref()?;
+    let same = platform::same_path(&platform::canonical_stable(&project.dir), &platform::canonical_stable(dir));
+    same.then(|| Some((state.studio_origin.clone()?, project.id.clone()))).flatten()
 }
 
 /// App menu › Check for Updates…: on the Projects page the check runs and

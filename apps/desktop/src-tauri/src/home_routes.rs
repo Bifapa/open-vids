@@ -308,6 +308,7 @@ fn route(
         }
         (_, p) if super::home_system::owns(p) => super::home_system::handle(s, &method, p),
         (_, p) if super::home_update::owns(p) => super::home_update::handle(s, &method, p, body),
+        (_, p) if super::home_fork::owns(p) => super::home_fork::handle(s, state, &method, p, body),
         ("POST", "/api/open-external") => home_api::handle_open_external(s, body),
         ("POST", "/api/pick-open") => handle_pick_open(s, state),
         ("POST", "/api/pick-parent") => handle_pick_parent(s),

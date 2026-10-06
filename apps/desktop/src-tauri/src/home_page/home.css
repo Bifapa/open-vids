@@ -392,6 +392,54 @@ html.custom-frame .tb-sep-actions {
 .row-name .link {
   font-size: var(--text-xs);
 }
+/* "Fork of X" beside a forked project's meta line (card) or name (row). */
+.forked {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg-3);
+  font-size: var(--text-xs);
+}
+.forked .ic {
+  flex: none;
+}
+/* Fork progress: the opening overlay's card with a bar and Cancel. */
+.fork-card {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  min-width: 300px;
+}
+.fork-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.fork-bar {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--bg-0);
+  overflow: hidden;
+}
+.fork-bar i {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.25s ease-out;
+}
+.fork-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: var(--text-xs);
+  color: var(--fg-3);
+  font-variant-numeric: tabular-nums;
+}
 .card,
 .row {
   scroll-margin-top: 96px;

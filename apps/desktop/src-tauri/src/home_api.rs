@@ -16,7 +16,7 @@ use super::coded_error::CodedError;
 use super::home_routes::{begin_open, respond, thumb_name_for, HomeInner};
 use super::recents::RecentEntry;
 use super::structure::{validate_structure, StructureError};
-use super::{intake, prefs, project_meta};
+use super::{intake, prefs, project_copy, project_meta};
 
 pub fn respond_json(stream: &mut TcpStream, code: u16, value: &Value) {
     respond(stream, code, "application/json", value.to_string().as_bytes());
@@ -47,7 +47,7 @@ pub fn route_not_found() -> CodedError {
     CodedError::plain("route_not_found", "not found")
 }
 
-fn folder_missing(dir: &Path) -> CodedError {
+pub fn folder_missing(dir: &Path) -> CodedError {
     CodedError::new(
         "folder_missing",
         format!("{} no longer exists", dir.display()),
@@ -82,6 +82,12 @@ pub fn recent_json(entry: &RecentEntry) -> Value {
     } else {
         project_meta::for_project(&entry.dir)
     };
+    // The folder this project was forked from (meta.json `forkedFrom.name`), for the card's "Fork of X".
+    let forked_from = if missing {
+        None
+    } else {
+        project_copy::forked_from_name(&entry.dir)
+    };
     json!({
         "id": entry.key(),
         "name": entry.id,
@@ -94,6 +100,7 @@ pub fn recent_json(entry: &RecentEntry) -> Value {
         "missing": missing,
         "duration": meta.map(|m| m.duration),
         "clips": meta.map(|m| m.clips),
+        "forked_from": forked_from,
     })
 }
 
@@ -137,7 +144,7 @@ pub fn handle_restore(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>, bod
     }
 }
 
-fn find(state: &Arc<Mutex<HomeInner>>, id: &str) -> Option<RecentEntry> {
+pub fn find(state: &Arc<Mutex<HomeInner>>, id: &str) -> Option<RecentEntry> {
     state
         .lock()
         .ok()
@@ -345,79 +352,46 @@ pub fn handle_open_external(stream: &mut TcpStream, body: &[u8]) {
     }
 }
 
-/// Names a duplicate may take: `X copy`, `X copy 2`, … (Finder's pattern).
-fn duplicate_name(name: &str, parent: &Path) -> String {
-    intake::unique_name(&format!("{name} copy"), |n| parent.join(n).exists())
-}
-
-/// Directories and files a duplicate leaves out: rendered output, caches
-/// rebuilt on demand, and the one-shot intake hand-off.
-fn skip_in_duplicate(rel: &Path) -> bool {
-    let first = rel.components().next().map(|c| c.as_os_str().to_string_lossy().into_owned());
-    matches!(first.as_deref(), Some("renders") | Some(".transcode-cache"))
-        || rel == Path::new(".hyperframes/agent/intake.json")
-}
-
-/// Duplicate a project folder. Unix keeps a symlink as a link. On Windows every symlink, junction and other
-/// reparse point is left out: such an entry can point anywhere (a junction to an ancestor makes the walk cycle;
-/// one to another folder would copy that folder's files into the duplicate), so none is followed, resolved or
-/// materialized — the duplicate holds only what physically lives in the project.
-fn copy_tree(from: &Path, to: &Path, root: &Path) -> std::io::Result<()> {
-    std::fs::create_dir_all(to)?;
-    for entry in std::fs::read_dir(from)? {
-        let entry = entry?;
-        let src = entry.path();
-        let rel = src.strip_prefix(root).unwrap_or(&src);
-        if skip_in_duplicate(rel) {
-            continue;
-        }
-        let dst = to.join(entry.file_name());
-        let kind = entry.file_type()?;
-        // `DirEntry::metadata` does not follow links on Windows, so this sees the entry itself.
-        #[cfg(windows)]
-        if crate::platform::is_link_like(&entry.metadata()?) {
-            continue;
-        }
-        if kind.is_symlink() {
-            copy_symlink(&src, &dst)?;
-        } else if kind.is_dir() {
-            copy_tree(&src, &dst, root)?;
-        } else {
-            // Clones on APFS (copy-on-write): duplicating GBs of footage is instant.
-            std::fs::copy(&src, &dst)?;
-        }
-    }
-    Ok(())
-}
-
-/// Copy one symlink entry of a duplicated project as a link (Unix; Windows never reaches this).
-fn copy_symlink(src: &Path, dst: &Path) -> std::io::Result<()> {
-    #[cfg(unix)]
-    {
-        std::os::unix::fs::symlink(std::fs::read_link(src)?, dst)
-    }
-    #[cfg(not(unix))]
-    {
-        let _ = (src, dst);
-        Ok(())
-    }
-}
-
-fn set_meta_name(dir: &Path, name: &str) {
-    let path = dir.join("meta.json");
-    let Ok(bytes) = std::fs::read(&path) else {
-        return;
+/// What the shared copier needs to know about the source before it starts: the page's refusal while the agent
+/// works in the project (a turn writes files and history under the copier's feet).
+pub fn copy_refusal(dir: &Path, name: &str) -> Option<CodedError> {
+    let open = match super::menu_app().and_then(|app| crate::open_project_scope_at(&app, dir)) {
+        Some((origin, id)) => project_copy::Open::Yes(super::updater::activity_of(&origin, &id)),
+        None => project_copy::Open::No,
     };
-    let Ok(mut value) = serde_json::from_slice::<Value>(&bytes) else {
-        return;
-    };
-    if let Some(map) = value.as_object_mut() {
-        map.insert("id".into(), json!(name));
-        map.insert("name".into(), json!(name));
-        if let Ok(out) = serde_json::to_string_pretty(&value) {
-            let _ = std::fs::write(path, format!("{out}\n"));
+    match project_copy::busy(dir, open)? {
+        project_copy::Busy::AgentTurn => Some(CodedError::new(
+            "copy_turn_running",
+            format!("an agent turn is running in “{name}”: wait for it to finish or stop it first"),
+            json!({ "name": name }),
+        )),
+        project_copy::Busy::ServedElsewhere(pid) => Some(CodedError::new(
+            "copy_served_elsewhere",
+            format!("another OpenVids process (pid {pid}) is working in “{name}”: close it there first"),
+            json!({ "name": name, "pid": pid }),
+        )),
+    }
+}
+
+/// List a finished copy first in Recent, with the source's dimensions and a copy of its thumbnail.
+pub fn record_copy(
+    state: &Arc<Mutex<HomeInner>>,
+    source: &RecentEntry,
+    copied: &project_copy::Copied,
+) -> Option<RecentEntry> {
+    let mut inner = state.lock().ok()?;
+    inner.recents.record(&copied.name, &copied.dir, source.width, source.height);
+    if let Some(thumb) = &source.thumb {
+        let ext = Path::new(thumb)
+            .extension()
+            .map(|e| e.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "jpg".into());
+        let new_thumb = thumb_name_for(&copied.dir, &ext);
+        if std::fs::copy(inner.thumbs_dir.join(thumb), inner.thumbs_dir.join(&new_thumb)).is_ok() {
+            inner.recents.update_meta(&copied.dir, Some(new_thumb), None, None);
         }
     }
+    inner.recents.find_by_dir(&copied.dir).cloned()
 }
 
 /// `POST /api/duplicate {id}` → the new recent (opened "now", so it leads).
@@ -429,43 +403,25 @@ pub fn handle_duplicate(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>, b
     if !entry.dir.is_dir() {
         return error(stream, 410, folder_missing(&entry.dir));
     }
-    let Some(parent) = entry.dir.parent().map(Path::to_path_buf) else {
-        return error(
-            stream,
-            400,
-            CodedError::plain("project_no_parent", "the project has no parent folder"),
-        );
-    };
-    let name = duplicate_name(&entry.id, &parent);
-    let dest = parent.join(&name);
-    if let Err(err) = copy_tree(&entry.dir, &dest, &entry.dir) {
-        let _ = std::fs::remove_dir_all(&dest);
-        return error(
-            stream,
-            500,
-            CodedError::new(
-                "duplicate_failed",
-                format!("could not duplicate the project: {err}"),
-                json!({ "detail": err.to_string() }),
-            ),
-        );
+    if let Some(refusal) = copy_refusal(&entry.dir, &entry.id) {
+        return error(stream, 409, refusal);
     }
-    set_meta_name(&dest, &name);
-    let recorded = state.lock().ok().map(|mut inner| {
-        inner.recents.record(&name, &dest, entry.width, entry.height);
-        if let Some(thumb) = &entry.thumb {
-            let ext = Path::new(thumb)
-                .extension()
-                .map(|e| e.to_string_lossy().into_owned())
-                .unwrap_or_else(|| "jpg".into());
-            let new_thumb = thumb_name_for(&dest, &ext);
-            if std::fs::copy(inner.thumbs_dir.join(thumb), inner.thumbs_dir.join(&new_thumb)).is_ok() {
-                inner.recents.update_meta(&dest, Some(new_thumb), None, None);
-            }
+    let progress = project_copy::Progress::default();
+    let copied = match project_copy::copy_project(&entry.dir, project_copy::Kind::Duplicate, &progress) {
+        Ok(copied) => copied,
+        Err(err) => {
+            return error(
+                stream,
+                500,
+                CodedError::new(
+                    "duplicate_failed",
+                    format!("could not duplicate the project: {err}"),
+                    json!({ "detail": err.to_string() }),
+                ),
+            )
         }
-        inner.recents.find_by_dir(&dest).cloned()
-    });
-    match recorded.flatten() {
+    };
+    match record_copy(state, &entry, &copied) {
         Some(entry) => respond_json(stream, 200, &json!({ "ok": true, "project": recent_json(&entry) })),
         None => error(
             stream,
@@ -995,122 +951,6 @@ mod tests {
         assert_eq!(start_format(&json!({ "format": null })), None);
         assert_eq!(start_format(&json!({ "format": 7 })), None);
         assert_eq!(start_format(&json!({})), None);
-    }
-
-    #[test]
-    fn duplicate_names_follow_finder() {
-        let base = std::env::temp_dir().join(format!("openvids-dup-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&base);
-        std::fs::create_dir_all(base.join("Talk copy")).unwrap();
-        assert_eq!(duplicate_name("Talk", &base), "Talk copy 2");
-        assert_eq!(duplicate_name("Other", &base), "Other copy");
-    }
-
-    #[test]
-    fn duplicate_skips_renders_caches_and_the_intake() {
-        let base = std::env::temp_dir().join(format!("openvids-dup-tree-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&base);
-        let src = base.join("p");
-        std::fs::create_dir_all(src.join("renders")).unwrap();
-        std::fs::create_dir_all(src.join("assets")).unwrap();
-        std::fs::create_dir_all(src.join(".hyperframes/agent")).unwrap();
-        std::fs::write(src.join("index.html"), "x").unwrap();
-        std::fs::write(src.join("assets/a.mov"), "m").unwrap();
-        std::fs::write(src.join("renders/out.mp4"), "r").unwrap();
-        std::fs::write(src.join(".hyperframes/agent/intake.json"), "{}").unwrap();
-        std::fs::write(src.join(".hyperframes/agent/chats.json"), "{}").unwrap();
-        let dst = base.join("p copy");
-        copy_tree(&src, &dst, &src).unwrap();
-        assert!(dst.join("index.html").is_file());
-        assert!(dst.join("assets/a.mov").is_file());
-        assert!(dst.join(".hyperframes/agent/chats.json").is_file());
-        assert!(!dst.join("renders").exists());
-        assert!(!dst.join(".hyperframes/agent/intake.json").exists());
-    }
-
-    #[test]
-    #[cfg(unix)]
-    fn duplicate_keeps_symlinks_as_links() {
-        let base = std::env::temp_dir().join(format!("openvids-dup-link-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&base);
-        let src = base.join("p");
-        std::fs::create_dir_all(src.join("assets")).unwrap();
-        std::fs::write(src.join("assets/real.mov"), "frames").unwrap();
-        std::fs::write(src.join("index.html"), "x").unwrap();
-        std::os::unix::fs::symlink(src.join("assets/real.mov"), src.join("assets/link.mov")).unwrap();
-        // A duplicate keeps the link as a link on Unix.
-        let dst = base.join("p copy");
-        copy_tree(&src, &dst, &src).unwrap();
-        assert!(dst.join("assets/real.mov").is_file());
-        assert!(std::fs::symlink_metadata(dst.join("assets/link.mov")).unwrap().is_symlink());
-        let _ = std::fs::remove_dir_all(&base);
-    }
-
-    #[test]
-    #[cfg(unix)]
-    fn duplicate_keeps_dangling_symlinks_without_failing() {
-        let base = std::env::temp_dir().join(format!("openvids-dup-dangle-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&base);
-        let src = base.join("p");
-        std::fs::create_dir_all(src.join("assets")).unwrap();
-        std::fs::write(src.join("index.html"), "x").unwrap();
-        std::os::unix::fs::symlink("gone.mov", src.join("assets/gone.mov")).unwrap();
-        let dst = base.join("p copy");
-        copy_tree(&src, &dst, &src).unwrap();
-        assert!(std::fs::symlink_metadata(dst.join("assets/gone.mov")).unwrap().is_symlink());
-        let _ = std::fs::remove_dir_all(&base);
-    }
-
-    /// `cmd /c mklink /J`: a junction needs neither Developer Mode nor elevation.
-    #[cfg(windows)]
-    fn junction(link: &Path, target: &Path) {
-        let status = std::process::Command::new("cmd")
-            .args(["/c", "mklink", "/J"])
-            .arg(link)
-            .arg(target)
-            .stdout(std::process::Stdio::null())
-            .status()
-            .unwrap();
-        assert!(status.success(), "mklink /J {link:?} {target:?}");
-    }
-
-    #[test]
-    #[cfg(windows)]
-    fn duplicate_skips_junctions_to_other_folders_and_to_an_ancestor() {
-        let base = std::env::temp_dir().join(format!("openvids-dup-junction-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&base);
-        let outside = base.join("outside");
-        let src = base.join("p");
-        std::fs::create_dir_all(&outside).unwrap();
-        std::fs::write(outside.join("secret.txt"), "not part of the project").unwrap();
-        std::fs::create_dir_all(src.join("assets")).unwrap();
-        std::fs::write(src.join("index.html"), "x").unwrap();
-        std::fs::write(src.join("assets/clip.mov"), "frames").unwrap();
-        junction(&src.join("assets").join("outside-link"), &outside);
-        // A cycle: a junction inside the project that points at the project itself.
-        junction(&src.join("assets").join("loop"), &src);
-        let dst = base.join("p copy");
-
-        copy_tree(&src, &dst, &src).unwrap();
-
-        assert_eq!(std::fs::read(dst.join("index.html")).unwrap(), b"x");
-        assert_eq!(std::fs::read(dst.join("assets/clip.mov")).unwrap(), b"frames");
-        assert!(std::fs::symlink_metadata(dst.join("assets/outside-link")).is_err(), "the link is not duplicated");
-        assert!(std::fs::symlink_metadata(dst.join("assets/loop")).is_err(), "the cycle is not duplicated");
-        // The external bytes are nowhere in the duplicate.
-        let mut stack = vec![dst.clone()];
-        while let Some(dir) = stack.pop() {
-            for entry in std::fs::read_dir(&dir).unwrap().flatten() {
-                let path = entry.path();
-                assert_ne!(path.file_name().and_then(|n| n.to_str()), Some("secret.txt"), "{path:?}");
-                if entry.file_type().unwrap().is_dir() {
-                    stack.push(path);
-                }
-            }
-        }
-        // The sources are intact (removing a junction must not touch what it points at).
-        assert!(outside.join("secret.txt").is_file());
-        let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]
