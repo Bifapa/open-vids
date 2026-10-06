@@ -11,7 +11,8 @@ function hasSteps(turn: TurnSummary): turn is PlanTurn {
 
 /**
  * A finished plan proposal still waiting for the user: not carried out by a later turn (`carriedOut`, from
- * `carriedOutProposalIds`). Offered with "Carry out" / "Change" — "Carry out anyway" once other turns ran after it.
+ * `carriedOutProposalIds`). Offered with "Carry out" / "Change" — "Carry out anyway" once other turns ran after it
+ * (it then lives in the feed, see `dockedPlanTurn`).
  */
 export function awaitsApproval(
   turn: TurnSummary,
@@ -21,10 +22,12 @@ export function awaitsApproval(
 }
 
 /**
- * The turn whose plan the chat pins above the conversation: the running turn's plan, else the newest proposal
- * still waiting for the user. A running turn that has no steps yet keeps an older waiting proposal in place
- * (its buttons are disabled meanwhile) rather than handing it back to the feed for a moment. Null when there is
- * nothing to pin; the plan of a turn that ended stays in the feed.
+ * The turn whose plan the chat pins above the conversation: the running turn's plan, else the proposal the user
+ * is currently asked about — the newest turn that is not running, when it is a proposal still waiting. Once any
+ * turn ended after a proposal (a follow-up, a change request, a turn with a plan of its own) it is out of date and
+ * stays in the feed (`PlanView`, "Carry out anyway"); the dock never brings it back. A running turn that has no
+ * steps yet keeps the waiting proposal in place (its buttons are disabled meanwhile) rather than handing it back to
+ * the feed for a moment. Null when there is nothing to pin: the plan of a turn that ended stays in the feed.
  */
 export function dockedPlanTurn(chat: ChatState): PlanTurn | null {
   const running = runningTurn(chat);
@@ -32,7 +35,8 @@ export function dockedPlanTurn(chat: ChatState): PlanTurn | null {
   const carriedOut = carriedOutProposalIds(chat);
   for (let index = chat.turns.length - 1; index >= 0; index -= 1) {
     const turn = chat.turns[index];
-    if (turn && awaitsApproval(turn, carriedOut) && hasSteps(turn)) return turn;
+    if (!turn || turn.status === "running") continue;
+    return awaitsApproval(turn, carriedOut) && hasSteps(turn) ? turn : null;
   }
   return null;
 }

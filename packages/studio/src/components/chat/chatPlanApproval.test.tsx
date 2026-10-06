@@ -87,7 +87,7 @@ describe("plan approval", () => {
     expect(mounted.store.getState().drafts.c1).toBe("Make it shorter");
   });
 
-  it("marks a proposal out of date once another turn ran, and still offers to carry it out", async () => {
+  it("marks a proposal out of date once another turn ran: it stays in the feed, and still offers to carry it out", async () => {
     mounted = mountChat({
       view: "chat",
       chatId: "c1",
@@ -96,6 +96,10 @@ describe("plan approval", () => {
         turn({ id: "t2", promptMessageId: "m3", assistantMessageId: "m4", status: "completed" }),
       ]),
     });
+    // A turn ended after it: the dock lets go, the proposal keeps its buttons in the feed.
+    expect(dock()).toBeNull();
+    expect(feedPlans()).toHaveLength(1);
+    expect(feedPlans()[0]?.contains(buttonWithText(mounted.host, "Carry out anyway"))).toBe(true);
     expect(mounted.host.querySelector('[data-testid="plan-stale"]')?.textContent).toContain(
       "out of date",
     );
@@ -164,11 +168,13 @@ describe("plan approval", () => {
         ],
       }),
     });
-    // Only B still waits for the user, in the dock; A was carried out and is back in the feed without buttons.
+    // Nothing is current: A was carried out (folded in the feed, no buttons) and B, out of date since turn 3 ended,
+    // keeps its own buttons in the feed. The dock pins no proposal that a later turn has outdated.
+    expect(dock()).toBeNull();
+    expect(feedPlans()).toHaveLength(2);
     expect(mounted.host.querySelectorAll('[data-testid="plan-stale"]')).toHaveLength(1);
-    expect(dock()?.getAttribute("data-turn-id")).toBe("t2");
-    expect(feedPlans()).toHaveLength(1);
     expect(buttonWithText(feedPlans()[0] ?? document.body, "Carry out")).toBeNull();
+    expect(feedPlans()[1]?.contains(buttonWithText(mounted.host, "Carry out anyway"))).toBe(true);
     await click(buttonWithText(mounted.host, "Carry out anyway"));
     expect(mounted.client.startTurn).toHaveBeenCalledWith(
       "c1",
@@ -194,7 +200,8 @@ describe("plan approval", () => {
         ],
       }),
     });
-    // The proposal still waits: the typed message carried nothing out.
+    // The proposal still waits, in the feed: the typed message carried nothing out.
+    expect(dock()).toBeNull();
     expect(buttonWithText(mounted.host, "Carry out anyway")).not.toBeNull();
   });
 

@@ -5,7 +5,7 @@ import { describeTurnError, isNoModelMessage } from "../../agent/agentErrors";
 import { NO_MODEL_TITLE } from "./ConnectModel";
 import { t, useTranslation } from "../../i18n";
 import { activeThread, runningTurn } from "../../agent/agentSelectors";
-import { dockedPlanTurn } from "../../agent/planDock";
+import { currentPlanStep, dockedPlanTurn } from "../../agent/planDock";
 import { Button } from "../ui/Button";
 import { cn } from "../ui/cn";
 import { activityText } from "./ActivityRow";
@@ -16,7 +16,11 @@ import { PlanDock } from "./PlanDock";
 
 const ANNOUNCE_EVERY_MS = 2000;
 
-/** One sentence for assistive tech about where the run is; changes only on real progress. */
+/**
+ * One sentence for assistive tech about where the run is; changes only on real progress. While a turn runs: the
+ * activity in progress, else the Director's plan step (the pinned dock shows it, nothing else announces it), else
+ * "Working".
+ */
 export function statusSentence(chat: ChatState | null): string {
   if (!chat) return "";
   const running = runningTurn(chat);
@@ -30,6 +34,15 @@ export function statusSentence(chat: ChatState | null): string {
           return activityText(label, labelCode, labelParams);
         }
       }
+    }
+    const plan = running.plan;
+    const step = plan ? currentPlanStep(plan.steps) : null;
+    if (plan && step) {
+      return t("chat.plan.dock.step", {
+        step: step.index + 1,
+        total: plan.steps.length,
+        title: step.step.title,
+      });
     }
     return t("chat.view.working");
   }

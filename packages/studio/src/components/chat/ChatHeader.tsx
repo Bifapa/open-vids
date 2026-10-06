@@ -182,7 +182,8 @@ export function ChatHeader({ contextChat }: { contextChat: ChatSummary | null })
   else if (shown) {
     status = summaryStatus(shown, activeTurn?.chatId === shown.id ? activeTurn.startedAt : null);
   }
-  // The phase of a long turn (Render QA pass, a render's progress, the plan step) replaces the plain "Working".
+  // The phase of a long turn (Render QA pass, a render's progress) replaces the plain "Working"; the plan step is
+  // in the pinned plan dock, not here.
   const phase = inChat && thread === "main" ? phaseLine(chat) : null;
   const showHistory = () => {
     if (view !== "history") closeChat();

@@ -22,6 +22,7 @@ import {
   userMessage,
 } from "../../agent/agentTestHarness";
 import { buttonWithText, click, mountChat, unmountChat, type Mounted } from "./chatTestHarness";
+import { statusSentence } from "./ChatView";
 
 let mounted: Mounted | undefined;
 
@@ -326,5 +327,101 @@ describe("what the dock does not pin", () => {
     );
     expect(dock()).toBeNull();
     expect(feedPlans()).toHaveLength(1);
+  });
+
+  it.each(["completed", "failed", "aborted"] as const)(
+    "lets a proposal go once a later turn %s: it stays in the feed with its buttons",
+    (status) => {
+      open(
+        finishedChat([
+          proposal("t1", 1),
+          turn({
+            id: "t2",
+            promptMessageId: "m3",
+            assistantMessageId: "m4",
+            status,
+            endedAt: 9500,
+          }),
+        ]),
+      );
+      expect(dock()).toBeNull();
+      expect(feedPlans()).toHaveLength(1);
+      expect(feedPlans()[0]?.contains(buttonWithText(document.body, "Carry out anyway"))).toBe(
+        true,
+      );
+    },
+  );
+
+  it("does not bring a proposal back when a later turn with a plan of its own ends", async () => {
+    const t2 = { id: "t2", promptMessageId: "m3", assistantMessageId: "m4" };
+    const { store } = open(
+      chatState({
+        chat: summary({ status: "working" }),
+        turns: [proposal("t1", 1), turn({ ...t2, plan: plan(["running", "pending"]) })],
+        messages: [
+          userMessage("m1", "Make a teaser", "t1"),
+          assistantMessage({ id: "m2", turnId: "t1", status: "complete" }),
+          userMessage("m3", "Make it shorter", "t2"),
+          assistantMessage({ id: "m4", turnId: "t2" }),
+        ],
+      }),
+      { activeTurn: { ...ACTIVE, turnId: "t2" } },
+    );
+    expect(dock()?.getAttribute("data-turn-id")).toBe("t2");
+
+    await act(async () =>
+      store.setState({
+        activeTurn: null,
+        chat: finishedChat([
+          proposal("t1", 1),
+          turn({ ...t2, status: "completed", endedAt: 9500, plan: plan(["done", "done"]) }),
+        ]),
+      }),
+    );
+    // The turn ended, so the dock is gone — the old proposal does not take its place, it stays in the feed.
+    expect(dock()).toBeNull();
+    expect(feedPlans()).toHaveLength(2);
+    expect(feedPlans()[0]?.contains(buttonWithText(document.body, "Carry out anyway"))).toBe(true);
+  });
+});
+
+describe("the announcement for assistive tech", () => {
+  it("says which plan step the Director is on, since nothing else announces it", () => {
+    open(runningChat(plan(["done", "running", "pending"])));
+    const announced = document.body.querySelector('div[role="status"][aria-live="polite"]');
+    expect(announced?.textContent).toBe("Step 2 of 3 · Add captions");
+    expect(statusSentence(runningChat(plan(["done", "running", "pending"])))).toBe(
+      "Step 2 of 3 · Add captions",
+    );
+  });
+
+  it("prefers the activity in progress to the plan step, and says the agent is working with neither", () => {
+    const base = runningChat(plan(["running", "pending"]));
+    const withActivity: ChatState = {
+      ...base,
+      messages: [
+        userMessage(),
+        assistantMessage({
+          parts: [
+            {
+              type: "activity",
+              id: "a1",
+              activity: {
+                id: "a1",
+                category: "edit",
+                status: "running",
+                label: "Editing scenes/intro.html",
+                count: 1,
+                targets: ["scenes/intro.html"],
+                startedAt: 5000,
+              },
+            },
+          ],
+        }),
+      ],
+    };
+    expect(statusSentence(withActivity)).toBe("Editing scenes/intro.html");
+    expect(statusSentence(runningChat(plan(["done", "pending"])))).toBe("The agent is working");
+    expect(statusSentence(runningChat())).toBe("The agent is working");
   });
 });
