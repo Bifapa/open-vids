@@ -57,6 +57,7 @@ use super::home_api::{self, respond_error, respond_json};
 use super::home_auth::{self, Head, HomeToken, TOKEN_HEADER};
 use super::recents::RecentsStore;
 use super::structure::validate_structure;
+use super::tabs::{TabActions, TabsView};
 const PAGE: &str = include_str!("home_page/index.html");
 const SETTINGS_PAGE: &str = include_str!("home_page/settings.html");
 const REPORT_PAGE: &str = include_str!("home_page/report.html");
@@ -91,17 +92,22 @@ pub type PrefsListener = Arc<dyn Fn(&serde_json::Value) + Send + Sync>;
 pub struct HomeInner {
     pub recents: RecentsStore,
     pub thumbs_dir: PathBuf,
-    pub open_phase: OpenPhase,
+    /// What each project open is doing, by project key, oldest first. An idle
+    /// project has no entry; a failed one keeps its entry until the page reads it.
+    pub opens: Vec<(String, OpenPhase)>,
     pub opener: Option<Opener>,
-    /// Id of the project currently loaded in the Studio window, if any.
-    /// Set when an open completes, cleared by Show All Projects.
-    pub current_id: Option<String>,
-    /// What `studio_menu_grant` compares the request `Origin` against:
-    /// the Studio sidecar origin the window currently shows, if any. Set by
-    /// lib.rs whenever it navigates to (or away from) a project, so Studio's
-    /// token-less menu requests only pass while they come from the live Studio
-    /// server. Never used for routing or navigation decisions.
-    pub studio_origin: Option<String>,
+    /// The projects open (or opening) in the window, as the shell last
+    /// published them: the tab strip's data, and what renaming a project
+    /// checks. Set by lib.rs on every change.
+    pub tabs: TabsView,
+    /// What `studio_menu_grant` compares the request `Origin` against: the
+    /// origins of the Studio servers the window shows. Published with `tabs`,
+    /// so Studio's token-less requests only pass while they come from a live
+    /// Studio server. Never used for routing or navigation decisions.
+    pub studio_origins: Vec<String>,
+    /// What a tab activation / close does in the window (lib.rs); `None` before
+    /// the shell installs it.
+    pub tab_actions: Option<Arc<dyn TabActions>>,
     /// Skip the launch intro on the next page load: the window is coming
     /// back from a project, or a project is opening at launch.
     pub skip_intro: bool,
@@ -118,14 +124,44 @@ impl HomeInner {
         Ok(Self {
             recents: RecentsStore::load(&recents_path),
             thumbs_dir,
-            open_phase: OpenPhase::Idle,
+            opens: Vec::new(),
             opener: None,
-            current_id: None,
-            studio_origin: None,
+            tabs: TabsView::default(),
+            studio_origins: Vec::new(),
+            tab_actions: None,
             skip_intro: false,
             prefs_listener: None,
             pending_onboarding: false,
         })
+    }
+
+    /// Set what the open of `key` is doing; the newest open goes last.
+    pub fn set_open_phase(&mut self, key: &str, phase: OpenPhase) {
+        self.opens.retain(|(k, _)| k != key);
+        self.opens.push((key.to_string(), phase));
+    }
+
+    /// The open of `key` is over (it succeeded, or its failure was read).
+    pub fn clear_open(&mut self, key: &str) {
+        self.opens.retain(|(k, _)| k != key);
+    }
+
+    /// Whether a sidecar start for `key` is under way.
+    pub fn is_opening(&self, key: &str) -> bool {
+        self.opens
+            .iter()
+            .any(|(k, phase)| k == key && matches!(phase, OpenPhase::Opening { .. }))
+    }
+
+    pub fn any_opening(&self) -> bool {
+        self.opens
+            .iter()
+            .any(|(_, phase)| matches!(phase, OpenPhase::Opening { .. }))
+    }
+
+    /// Whether the project `key` is open or opening in the window.
+    pub fn is_open(&self, key: &str) -> bool {
+        self.tabs.tabs.iter().any(|tab| tab.key == key)
     }
 }
 
@@ -147,12 +183,8 @@ pub fn serve_one(mut stream: TcpStream, state: &Arc<Mutex<HomeInner>>, token: &s
         respond(&mut stream, 400, "text/plain", b"bad request");
         return;
     };
-    let studio = studio_menu_grant(
-        super::window_frame(),
-        &head,
-        &studio_origins_for(state),
-        port,
-    );
+    let (studio_origins, tabs_enabled) = studio_context(state);
+    let studio = studio_grant(super::window_frame(), tabs_enabled, &head, &studio_origins, port);
     if !home_auth::origin_allowed(&head, port) && studio.is_none() {
         respond(&mut stream, 403, "text/plain", b"foreign origin");
         return;
@@ -309,6 +341,9 @@ fn route(
         (_, p) if super::home_system::owns(p) => super::home_system::handle(s, &method, p),
         (_, p) if super::home_update::owns(p) => super::home_update::handle(s, &method, p, body),
         (_, p) if super::home_fork::owns(p) => super::home_fork::handle(s, state, &method, p, body),
+        (_, p) if super::home_tabs::owns(p) => {
+            super::home_tabs::handle(s, state, &method, p, body, cors_origin)
+        }
         ("POST", "/api/open-external") => home_api::handle_open_external(s, body),
         ("POST", "/api/pick-open") => handle_pick_open(s, state),
         ("POST", "/api/pick-parent") => handle_pick_parent(s),
@@ -342,21 +377,21 @@ fn handle_menu_action(stream: &mut TcpStream, method: &str, path: &str, cors_ori
         || action.contains('/')
         || !super::MENU_ACTIONS.contains(&action)
     {
-        respond_menu(stream, 404, "text/plain", b"not found", cors_origin);
+        respond_cors(stream, 404, "text/plain", b"not found", cors_origin);
         return;
     }
     match super::menu_app() {
         Some(app) => {
             super::menu_action(&app, action);
-            respond_menu(stream, 200, "application/json", br#"{"ok":true}"#, cors_origin);
+            respond_cors(stream, 200, "application/json", br#"{"ok":true}"#, cors_origin);
         }
-        None => respond_menu(stream, 503, "text/plain", b"app not ready", cors_origin),
+        None => respond_cors(stream, 503, "text/plain", b"app not ready", cors_origin),
     }
 }
 
 /// What a Studio page may ask of this server across origins. Granted once per request by
-/// [`studio_menu_grant`]; `origin` is the exact `Origin` to echo back.
-struct StudioMenuGrant {
+/// [`studio_grant`]; `origin` is the exact `Origin` to echo back.
+struct StudioGrant {
     origin: String,
     /// Set for a CORS preflight: the method it announced (the endpoint's own).
     preflight_method: Option<&'static str>,
@@ -367,37 +402,58 @@ struct StudioMenuGrant {
 /// quit, reload, show_home and open_settings never cross origins without the home token.
 const STUDIO_MENU_POSTS: [&str; 3] = ["open_project", "welcome", "check_updates"];
 
+/// The method of the one endpoint `path` names that a Studio page may reach without the home token, or `None`:
+///
+/// - the title-bar menu's `POST /api/menu/{open_project,welcome,check_updates}` and `GET /api/menu/about`, on the
+///   Windows custom frame only (`frame == "custom"`; a query string never grants anything);
+/// - the tab strip's `GET /api/tabs`, `POST /api/tabs/{activate,close}`, on every platform, while the project tabs
+///   feature is on (`tabs_enabled`).
+fn studio_endpoint_method(frame: &str, tabs_enabled: bool, path: &str) -> Option<&'static str> {
+    if let Some(action) = path.strip_prefix("/api/menu/") {
+        if !cfg!(windows) || frame != "custom" {
+            return None;
+        }
+        return match action {
+            "about" => Some("GET"),
+            action if STUDIO_MENU_POSTS.contains(&action) => Some("POST"),
+            _ => None,
+        };
+    }
+    if tabs_enabled {
+        return super::home_tabs::endpoint_method(path);
+    }
+    None
+}
+
 /// Studio is another loopback origin, so its `fetch` to this server is cross-origin. Only the title-bar menu's
-/// own requests are let through, token-free and with a CORS grant — and only when every condition holds:
+/// and the tab strip's own requests are let through, token-free and with a CORS grant — and only when every
+/// condition holds:
 ///
-/// - the window really is the Windows custom frame (`frame == "custom"`; a query string never grants anything),
-/// - `Host` names this server and `Origin` is the Studio origin the window currently shows,
-/// - the request is `POST /api/menu/{open_project,welcome,check_updates}`, `GET /api/menu/about`, or the
-///   `OPTIONS` preflight of exactly one of them (requested method = that endpoint's method, requested headers
-///   only `content-type`).
+/// - `Host` names this server and `Origin` is the Studio origin of a project the window has open,
+/// - the request is one of the endpoints [`studio_endpoint_method`] lists for this frame, or the `OPTIONS`
+///   preflight of exactly one of them (requested method = that endpoint's method, requested headers only
+///   `content-type`).
 ///
-/// Anything else — another action, a stale or missing `Origin`, a foreign `Host`, the system or macOS frame —
-/// gets no grant, so it is judged by the ordinary same-origin and token rules (403 for a foreign origin).
-fn studio_menu_grant(
+/// Anything else — another action, a stale or missing `Origin`, a foreign `Host`, the system or macOS frame for
+/// the menu — gets no grant, so it is judged by the ordinary same-origin and token rules (403 for a foreign
+/// origin).
+fn studio_grant(
     frame: &str,
+    tabs_enabled: bool,
     head: &Head,
     studio_origins: &[String],
     port: u16,
-) -> Option<StudioMenuGrant> {
-    if !cfg!(windows) || frame != "custom" || !home_auth::host_is_this_server(head, port) {
+) -> Option<StudioGrant> {
+    if !home_auth::host_is_this_server(head, port) {
         return None;
     }
     let origin = head.header("origin")?.trim().to_lowercase();
     if !studio_origins.contains(&origin) || !home_auth::origin_allowed_studio_origin(&origin, port) {
         return None;
     }
-    let endpoint_method = match head.path.strip_prefix("/api/menu/")? {
-        "about" => "GET",
-        action if STUDIO_MENU_POSTS.contains(&action) => "POST",
-        _ => return None,
-    };
+    let endpoint_method = studio_endpoint_method(frame, tabs_enabled, &head.path)?;
     if head.method.eq_ignore_ascii_case(endpoint_method) {
-        return Some(StudioMenuGrant { origin, preflight_method: None });
+        return Some(StudioGrant { origin, preflight_method: None });
     }
     if head.method.eq_ignore_ascii_case("OPTIONS") {
         if head.header("access-control-request-method").map(str::trim) != Some(endpoint_method) {
@@ -408,25 +464,36 @@ fn studio_menu_grant(
                 return None;
             }
         }
-        return Some(StudioMenuGrant { origin, preflight_method: Some(endpoint_method) });
+        return Some(StudioGrant { origin, preflight_method: Some(endpoint_method) });
     }
     None
 }
 
-/// The `Origin` values Studio may currently send: the live sidecar origin
-/// plus the `localhost` spelling of the same port, so the check survives the
-/// host alias the browser normalises to.
-fn studio_origins_for(state: &Arc<Mutex<HomeInner>>) -> Vec<String> {
-    let Some(origin) = state.lock().ok().and_then(|inner| inner.studio_origin.clone()) else {
-        return Vec::new();
+/// The `Origin` values Studio may currently send (every open project's sidecar origin, plus the `localhost`
+/// spelling of the same port so the check survives the host alias the browser normalises to) and whether the
+/// tab strip is on.
+fn studio_context(state: &Arc<Mutex<HomeInner>>) -> (Vec<String>, bool) {
+    let Some((published, tabs_enabled)) = state
+        .lock()
+        .ok()
+        .map(|inner| (inner.studio_origins.clone(), inner.tabs.enabled))
+    else {
+        return (Vec::new(), false);
     };
-    let mut origins = vec![origin.to_lowercase()];
-    if let Some(rest) = origins[0].strip_prefix("http://127.0.0.1:") {
-        origins.push(format!("http://localhost:{rest}"));
-    } else if let Some(rest) = origins[0].strip_prefix("http://localhost:") {
-        origins.push(format!("http://127.0.0.1:{rest}"));
+    let mut origins: Vec<String> = Vec::new();
+    for origin in published {
+        let origin = origin.to_lowercase();
+        let alias = if let Some(rest) = origin.strip_prefix("http://127.0.0.1:") {
+            Some(format!("http://localhost:{rest}"))
+        } else {
+            origin
+                .strip_prefix("http://localhost:")
+                .map(|rest| format!("http://127.0.0.1:{rest}"))
+        };
+        origins.push(origin);
+        origins.extend(alias);
     }
-    origins
+    (origins, tabs_enabled)
 }
 
 /// What the pages show in their About sheet: the same name, version and site
@@ -441,7 +508,7 @@ fn serve_menu_about(stream: &mut TcpStream, cors_origin: Option<&str>) {
         "comment": super::i18n::t("menu.app.aboutComment"),
         "credits": super::i18n::t("menu.app.aboutCredits"),
     });
-    respond_menu(stream, 200, "application/json", about.to_string().as_bytes(), cors_origin);
+    respond_cors(stream, 200, "application/json", about.to_string().as_bytes(), cors_origin);
 }
 
 /// The page, with the token and the boot state (intro flag + preferences)
@@ -451,8 +518,7 @@ fn serve_page(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>, token: &str
         .lock()
         .ok()
         .map(|mut inner| {
-            let opening = matches!(inner.open_phase, OpenPhase::Opening { .. });
-            let skip = inner.skip_intro || opening;
+            let skip = inner.skip_intro || inner.any_opening();
             inner.skip_intro = false;
             (skip, std::mem::take(&mut inner.pending_onboarding))
         })
@@ -551,12 +617,14 @@ fn asset(name: &str) -> Option<(&'static str, &'static [u8])> {
         "ov.css" => (CSS, include_bytes!("home_page/ov.css")),
         "home.css" => (CSS, include_bytes!("home_page/home.css")),
         "composer.css" => (CSS, include_bytes!("home_page/composer.css")),
+        "tabs.css" => (CSS, include_bytes!("home_page/tabs.css")),
         "settings.css" => (CSS, include_bytes!("home_page/settings.css")),
         "report.css" => (CSS, include_bytes!("home_page/report.css")),
         "shared.js" => (JS, include_bytes!("home_page/shared.js")),
         "i18n.js" => (JS, include_bytes!("home_page/i18n.js")),
         "home.js" => (JS, include_bytes!("home_page/home.js")),
         "sheets.js" => (JS, include_bytes!("home_page/sheets.js")),
+        "tabs.js" => (JS, include_bytes!("home_page/tabs.js")),
         "composer.js" => (JS, include_bytes!("home_page/composer.js")),
         "settings-core.js" => (JS, include_bytes!("home_page/settings-core.js")),
         "settings-general.js" => (JS, include_bytes!("home_page/settings-general.js")),
@@ -590,20 +658,22 @@ fn serve_asset(stream: &mut TcpStream, name: &str) {
     }
 }
 
-/// Mark an open as started and hand it to the opener (lib.rs).
+/// Mark the open of the project folder `dir` as started and hand it to the
+/// opener (lib.rs). Returns the project's key, which the page addresses it by.
 pub fn begin_open(
     state: &Arc<Mutex<HomeInner>>,
-    id: String,
     dir: PathBuf,
     workspace: Option<String>,
-) {
+) -> String {
+    let key = super::recents::project_key(&dir);
     let opener = state.lock().ok().and_then(|mut inner| {
-        inner.open_phase = OpenPhase::Opening { label: id.clone() };
+        inner.set_open_phase(&key, OpenPhase::Opening { label: super::open_label(&dir) });
         inner.opener.clone()
     });
     if let Some(opener) = opener {
         opener(dir, workspace);
     }
+    key
 }
 
 fn serve_thumb(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>, path: &str) {
@@ -622,16 +692,36 @@ fn serve_thumb(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>, path: &str
     }
 }
 
+/// `GET /api/open-state`: what the project opens are doing. The page's own fields are the newest open's (or
+/// idle); `opens` lists every project with an open still going or a failure not read yet. A failure is delivered
+/// once: this read takes it out of the state.
 fn serve_open_state(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>) {
-    let payload = state.lock().ok().map(|inner| match &inner.open_phase {
-        OpenPhase::Idle => serde_json::json!({ "phase": "idle" }),
-        OpenPhase::Opening { label } => serde_json::json!({ "phase": "opening", "label": label }),
-        OpenPhase::Failed { label, error } => {
-            let mut body = error.body();
-            body["phase"] = serde_json::json!("failed");
-            body["label"] = serde_json::json!(label);
+    let payload = state.lock().ok().map(|mut inner| {
+        let entry = |(key, phase): &(String, OpenPhase)| {
+            let mut body = match phase {
+                OpenPhase::Idle => serde_json::json!({ "phase": "idle" }),
+                OpenPhase::Opening { label } => {
+                    serde_json::json!({ "phase": "opening", "label": label })
+                }
+                OpenPhase::Failed { label, error } => {
+                    let mut body = error.body();
+                    body["phase"] = serde_json::json!("failed");
+                    body["label"] = serde_json::json!(label);
+                    body
+                }
+            };
+            body["key"] = serde_json::json!(key);
             body
-        }
+        };
+        let opens: Vec<serde_json::Value> = inner.opens.iter().map(entry).collect();
+        let mut body = inner
+            .opens
+            .last()
+            .map(entry)
+            .unwrap_or_else(|| serde_json::json!({ "phase": "idle" }));
+        body["opens"] = serde_json::json!(opens);
+        inner.opens.retain(|(_, phase)| !matches!(phase, OpenPhase::Failed { .. }));
+        body
     });
     match payload {
         Some(json) => respond_json(stream, 200, &json),
@@ -647,12 +737,11 @@ fn handle_pick_open(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>) {
         None => respond(stream, 200, "application/json", br#"{"cancelled":true}"#),
         Some(dir) => match validate_structure(&dir) {
             Ok(project) => {
-                begin_open(state, project.id.clone(), project.dir.clone(), None);
-                respond(
+                let key = begin_open(state, project.dir.clone(), None);
+                respond_json(
                     stream,
                     200,
-                    "application/json",
-                    br#"{"cancelled":false,"opening":true}"#,
+                    &serde_json::json!({ "cancelled": false, "opening": true, "key": key }),
                 );
             }
             Err(err) => {
@@ -699,8 +788,8 @@ fn handle_open(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>, body: &[u8
             } else {
                 match validate_structure(&entry.dir) {
                     Ok(project) => {
-                        begin_open(state, project.id.clone(), project.dir.clone(), workspace);
-                        respond(stream, 200, "application/json", br#"{"opening":true}"#);
+                        let key = begin_open(state, project.dir.clone(), workspace);
+                        respond_json(stream, 200, &serde_json::json!({ "opening": true, "key": key }));
                     }
                     Err(err) => respond_error(stream, 400, &err.coded()),
                 }
@@ -817,9 +906,10 @@ fn write_response(
     let _ = stream.flush();
 }
 
-/// `respond` for the title-bar menu endpoints: when `cors_origin` is a Studio origin that
-/// `studio_menu_grant` approved, the answer lets exactly that origin read it. Never `*`, never credentials.
-fn respond_menu(
+/// `respond` for the endpoints a Studio page may reach cross-origin (the title-bar menu, the tab strip): when
+/// `cors_origin` is a Studio origin that `studio_grant` approved, the answer lets exactly that origin read it.
+/// Never `*`, never credentials.
+pub(crate) fn respond_cors(
     stream: &mut TcpStream,
     code: u16,
     content_type: &'static str,
@@ -833,7 +923,7 @@ fn respond_menu(
 }
 
 /// The 204 answer to an approved preflight.
-fn respond_preflight(stream: &mut TcpStream, grant: &StudioMenuGrant, allow_headers: bool) {
+fn respond_preflight(stream: &mut TcpStream, grant: &StudioGrant, allow_headers: bool) {
     let mut headers = format!(
         "Access-Control-Allow-Origin: {}\r\nVary: Origin\r\nAccess-Control-Allow-Methods: {}\r\n",
         grant.origin,
@@ -976,25 +1066,91 @@ mod tests {
         assert!(asset("i18n.js").is_some());
     }
 
+    fn studio_head(method: &str, path: &str, origin: &str, extra: &[(&str, &str)]) -> Head {
+        let mut headers: std::collections::HashMap<String, String> = [("host", "127.0.0.1:5199"), ("origin", origin)]
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
+        headers.extend(extra.iter().map(|(k, v)| (k.to_string(), v.to_string())));
+        Head { method: method.into(), path: path.into(), headers }
+    }
+
     #[test]
     fn a_studio_menu_grant_needs_the_windows_custom_frame() {
         let studio = "http://127.0.0.1:5210".to_string();
-        let head = Head {
-            method: "POST".into(),
-            path: "/api/menu/open_project".into(),
-            headers: [("host", "127.0.0.1:5199"), ("origin", studio.as_str())]
-                .into_iter()
-                .map(|(k, v)| (k.to_string(), v.to_string()))
-                .collect(),
-        };
+        let head = studio_head("POST", "/api/menu/open_project", &studio, &[]);
         let origins = [studio.clone()];
         // macOS ("overlay") and the Windows system-frame fallback never grant, whatever else matches.
         for frame in ["overlay", "system", "", "Custom", "custom "] {
-            assert!(studio_menu_grant(frame, &head, &origins, 5199).is_none(), "frame {frame:?}");
+            assert!(studio_grant(frame, true, &head, &origins, 5199).is_none(), "frame {frame:?}");
         }
         // The custom frame grants on Windows builds only.
-        assert_eq!(studio_menu_grant("custom", &head, &origins, 5199).is_some(), cfg!(windows));
-        // And never for an origin that is not the live Studio one.
-        assert!(studio_menu_grant("custom", &head, &[], 5199).is_none());
+        assert_eq!(studio_grant("custom", false, &head, &origins, 5199).is_some(), cfg!(windows));
+        // And never for an origin that is not a live Studio one.
+        assert!(studio_grant("custom", false, &head, &[], 5199).is_none());
+    }
+
+    #[test]
+    fn the_tab_strip_reaches_exactly_its_three_endpoints_from_any_open_project_origin() {
+        let (first, second) = ("http://127.0.0.1:5210", "http://127.0.0.1:5211");
+        let origins = [first.to_string(), second.to_string()];
+        let grant = |head: &Head, tabs: bool, origins: &[String]| studio_grant("overlay", tabs, head, origins, 5199);
+        for (method, path) in [("GET", "/api/tabs"), ("POST", "/api/tabs/activate"), ("POST", "/api/tabs/close")] {
+            for origin in [first, second] {
+                let head = studio_head(method, path, origin, &[]);
+                assert_eq!(
+                    grant(&head, true, &origins).map(|g| g.origin),
+                    Some(origin.to_string()),
+                    "{method} {path} from {origin}"
+                );
+                // Without the feature there is no grant at all, on any platform.
+                assert!(grant(&head, false, &origins).is_none(), "{method} {path}");
+            }
+        }
+        // Not the wrong method, not anything else of this server, not a stranger origin.
+        assert!(grant(&studio_head("POST", "/api/tabs", first, &[]), true, &origins).is_none());
+        assert!(grant(&studio_head("GET", "/api/tabs/close", first, &[]), true, &origins).is_none());
+        for path in ["/api/open", "/api/trash", "/api/preferences", "/api/tabs/other"] {
+            assert!(grant(&studio_head("POST", path, first, &[]), true, &origins).is_none(), "{path}");
+        }
+        let stranger = studio_head("GET", "/api/tabs", "http://127.0.0.1:9999", &[]);
+        assert!(grant(&stranger, true, &origins).is_none());
+        let foreign_host = Head { headers: [("host".to_string(), "evil.test".to_string()), ("origin".to_string(), first.to_string())].into(), ..studio_head("GET", "/api/tabs", first, &[]) };
+        assert!(grant(&foreign_host, true, &origins).is_none());
+    }
+
+    #[test]
+    fn a_tab_preflight_is_granted_for_the_endpoints_own_method_and_content_type_only() {
+        let studio = "http://127.0.0.1:5210";
+        let origins = [studio.to_string()];
+        let preflight = |path: &str, method: &str, headers: Option<&str>| {
+            let mut extra = vec![("access-control-request-method", method)];
+            extra.extend(headers.map(|h| ("access-control-request-headers", h)));
+            studio_grant("overlay", true, &studio_head("OPTIONS", path, studio, &extra), &origins, 5199)
+        };
+        let ok = preflight("/api/tabs/close", "POST", Some("content-type")).expect("granted");
+        assert_eq!(ok.preflight_method, Some("POST"));
+        assert!(preflight("/api/tabs/close", "DELETE", None).is_none());
+        assert!(preflight("/api/tabs/close", "POST", Some("x-openvids-token")).is_none());
+        assert!(preflight("/api/tabs", "POST", None).is_none(), "GET /api/tabs is simple: no POST preflight for it");
+    }
+
+    #[test]
+    fn the_studio_origins_include_the_localhost_alias_of_every_open_project() {
+        let state = Arc::new(Mutex::new(
+            HomeInner::load(std::env::temp_dir().join("openvids-ctx-recents.json"), std::env::temp_dir().join("openvids-ctx-thumbs"))
+                .expect("home state"),
+        ));
+        assert_eq!(studio_context(&state), (Vec::new(), false));
+        {
+            let mut inner = state.lock().unwrap();
+            inner.studio_origins = vec!["http://127.0.0.1:5210".into(), "http://127.0.0.1:5211".into()];
+            inner.tabs.enabled = true;
+        }
+        let (origins, enabled) = studio_context(&state);
+        assert!(enabled);
+        for origin in ["http://127.0.0.1:5210", "http://localhost:5210", "http://127.0.0.1:5211", "http://localhost:5211"] {
+            assert!(origins.iter().any(|o| o == origin), "{origin}");
+        }
     }
 }

@@ -52,9 +52,10 @@ pub enum LinkAction {
     Ignore,
 }
 
-/// Decide what the link `raw` becomes. `studio_origin` is the origin of the
-/// Studio server the window shows, if any.
-pub fn classify_link(raw: &str, studio_origin: Option<&str>) -> LinkAction {
+/// Decide what the link `raw` becomes. `studio_origins` are the origins of the
+/// Studio servers the page that opened it may ask to open a render (its own
+/// project's; the window's when the page is not a project's).
+pub fn classify_link(raw: &str, studio_origins: &[String]) -> LinkAction {
     if raw.is_empty() || raw.len() > MAX_LINK_LEN || raw.chars().any(char::is_control) {
         return LinkAction::Ignore;
     }
@@ -63,7 +64,7 @@ pub fn classify_link(raw: &str, studio_origin: Option<&str>) -> LinkAction {
     };
     match url.scheme() {
         "https" => external(url),
-        "http" if is_loopback(&url) => render_file_link(&url, studio_origin),
+        "http" if is_loopback(&url) => render_file_link(&url, studio_origins),
         "http" => external(url),
         "mailto" => mail(url),
         _ => LinkAction::Ignore,
@@ -107,13 +108,11 @@ fn mail(url: Url) -> LinkAction {
     }
 }
 
-/// `/api/projects/<id>/renders/file/<name>` on the Studio server the window
-/// shows: the URL a render's own link carries.
-fn render_file_link(url: &Url, studio_origin: Option<&str>) -> LinkAction {
-    let Some(studio_origin) = studio_origin else {
-        return LinkAction::Ignore;
-    };
-    if normalize_origin(url) != studio_origin {
+/// `/api/projects/<id>/renders/file/<name>` on one of the Studio servers
+/// given: the URL a render's own link carries.
+fn render_file_link(url: &Url, studio_origins: &[String]) -> LinkAction {
+    let origin = normalize_origin(url);
+    if !studio_origins.contains(&origin) {
         return LinkAction::Ignore;
     }
     let segments: Vec<&str> = url.path_segments().map(Iterator::collect).unwrap_or_default();
@@ -125,7 +124,7 @@ fn render_file_link(url: &Url, studio_origin: Option<&str>) -> LinkAction {
         return LinkAction::Ignore;
     }
     LinkAction::RenderFile {
-        origin: studio_origin.to_string(),
+        origin,
         project: (*project).to_string(),
         file: (*file).to_string(),
     }
@@ -259,8 +258,12 @@ mod tests {
 
     const STUDIO: &str = "http://127.0.0.1:5210";
 
+    fn studio() -> Vec<String> {
+        vec![STUDIO.to_string()]
+    }
+
     fn browser(raw: &str) -> bool {
-        matches!(classify_link(raw, Some(STUDIO)), LinkAction::Browser(_))
+        matches!(classify_link(raw, &studio()), LinkAction::Browser(_))
     }
 
     #[test]
@@ -287,10 +290,10 @@ mod tests {
             "mailto:team@example.com?attach=/etc/passwd",
             "https://example.com/\u{7}bell",
         ] {
-            assert_eq!(classify_link(raw, Some(STUDIO)), LinkAction::Ignore, "{raw:?}");
+            assert_eq!(classify_link(raw, &studio()), LinkAction::Ignore, "{raw:?}");
         }
         let long = format!("https://example.com/{}", "a".repeat(MAX_LINK_LEN));
-        assert_eq!(classify_link(&long, Some(STUDIO)), LinkAction::Ignore);
+        assert_eq!(classify_link(&long, &studio()), LinkAction::Ignore);
     }
 
     #[test]
@@ -298,7 +301,7 @@ mod tests {
         assert_eq!(
             classify_link(
                 "http://127.0.0.1:5210/api/projects/my%20video/renders/file/out%201.mp4?x=1",
-                Some(STUDIO)
+                &studio()
             ),
             LinkAction::RenderFile {
                 origin: STUDIO.to_string(),
@@ -320,13 +323,28 @@ mod tests {
             "http://localhost:3000/",
             "http://[::1]:5210/",
         ] {
-            assert_eq!(classify_link(raw, Some(STUDIO)), LinkAction::Ignore, "{raw}");
+            assert_eq!(classify_link(raw, &studio()), LinkAction::Ignore, "{raw}");
         }
         // No Studio server on screen: even its path pattern opens nothing.
         assert_eq!(
-            classify_link("http://127.0.0.1:5210/api/projects/p/renders/file/a.mp4", None),
+            classify_link("http://127.0.0.1:5210/api/projects/p/renders/file/a.mp4", &[]),
             LinkAction::Ignore
         );
+    }
+
+    #[test]
+    fn each_open_project_server_opens_its_own_renders() {
+        let both = vec![STUDIO.to_string(), "http://127.0.0.1:5211".to_string()];
+        for origin in &both {
+            assert_eq!(
+                classify_link(&format!("{origin}/api/projects/p/renders/file/a.mp4"), &both),
+                LinkAction::RenderFile {
+                    origin: origin.clone(),
+                    project: "p".to_string(),
+                    file: "a.mp4".to_string(),
+                }
+            );
+        }
     }
 
     fn origins() -> Vec<String> {

@@ -893,11 +893,20 @@ fn relaunch_after_exit() -> std::io::Result<()> {
     Err(std::io::ErrorKind::Unsupported.into())
 }
 
-// ── The open project's activity ──────────────────────────────────────────────
+// ── The open projects' activity ──────────────────────────────────────────────
 
+/// What every open project is doing, summed: a restart cuts all of it short.
+/// `None` when no open project's server answers (nothing a restart could cut).
 fn project_activity(app: &tauri::AppHandle) -> Option<Activity> {
-    let (origin, id) = crate::open_project_scope(app)?;
-    activity_of(&origin, &id)
+    let mut total: Option<Activity> = None;
+    for (origin, id) in crate::open_project_scopes(app) {
+        if let Some(activity) = activity_of(&origin, &id) {
+            let sum = total.get_or_insert_with(Activity::default);
+            sum.renders += activity.renders;
+            sum.agent_turn |= activity.agent_turn;
+        }
+    }
+    total
 }
 
 /// What the Studio server at `origin` says project `id` is doing; `None` when it does not answer.

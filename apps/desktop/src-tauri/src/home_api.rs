@@ -875,15 +875,11 @@ pub fn handle_start(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>, body:
             ),
         );
     }
-    let id = dest
-        .file_name()
-        .map(|n| n.to_string_lossy().into_owned())
-        .unwrap_or(name.clone());
-    begin_open(state, id, dest.clone(), Some("media".to_string()));
+    let key = begin_open(state, dest.clone(), Some("media".to_string()));
     respond_json(
         stream,
         200,
-        &json!({ "opening": true, "name": name, "dir": dest.to_string_lossy(), "path": prefs::abbreviate_home(&dest) }),
+        &json!({ "opening": true, "key": key, "name": name, "dir": dest.to_string_lossy(), "path": prefs::abbreviate_home(&dest) }),
     );
 }
 

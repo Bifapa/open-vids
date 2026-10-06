@@ -20,14 +20,16 @@ pub fn refresh_thumbnail_async(app: &tauri::AppHandle, dir: PathBuf, id: String)
     let handle = app.clone();
     std::thread::spawn(move || {
         // Give the Studio server a head start: it was just spawned (prod) or
-        // hot-reloading a new symlink (dev). If no project is open by then,
-        // give up — the card placeholder covers the gap; fetch_bytes retries
-        // the connection itself.
+        // hot-reloading a new symlink (dev). If the project is not open by
+        // then (its tab was closed), give up — the card placeholder covers
+        // the gap; fetch_bytes retries the connection itself.
         std::thread::sleep(std::time::Duration::from_secs(2));
-        let Some(origin) = handle
-            .try_state::<Mutex<AppState>>()
-            .and_then(|s| s.lock().ok().and_then(|s| s.studio_origin.clone()))
-        else {
+        let key = super::recents::project_key(&dir);
+        let Some(origin) = handle.try_state::<Mutex<AppState>>().and_then(|s| {
+            s.lock()
+                .ok()
+                .and_then(|s| s.tabs.origin_of(&key).map(str::to_string))
+        }) else {
             return;
         };
         let url = format!(

@@ -16,7 +16,8 @@ tauri-build = { version = "2", features = [] }
 serde_json = "1"
 
 [dependencies]
-tauri = { version = "2", features = [] }
+# `unstable`: child webviews in one window (`Window::add_child`) for project tabs, see `tab_webviews.rs`.
+tauri = { version = "2", features = ["unstable"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # The fork job's slot (home_fork.rs): a lock without a poisoning path to unwrap.

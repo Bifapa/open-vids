@@ -231,6 +231,12 @@ fn canonical_key(dir: &Path) -> PathBuf {
     super::platform::canonical_stable(dir)
 }
 
+/// The key of the project folder `dir`, the same one its recents entry carries
+/// ([`RecentEntry::key`]): what the shell keys everything per project by.
+pub fn project_key(dir: &Path) -> String {
+    dir_key(&canonical_key(dir))
+}
+
 /// Hash of a directory path for [`RecentEntry::key`]. Windows paths are folded
 /// the way `same_path` compares them so one folder never gets two keys.
 fn dir_key(dir: &Path) -> String {

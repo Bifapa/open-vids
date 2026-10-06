@@ -11,8 +11,8 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex, OnceLock};
 
 use super::coded_error::CodedError;
-use super::home_api::respond_error;
-use super::home_routes::{begin_open, respond, HomeInner};
+use super::home_api::{respond_error, respond_json};
+use super::home_routes::{begin_open, HomeInner};
 
 pub fn handle_create(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>, body: &[u8]) {
     let params = match parse_create(body) {
@@ -41,9 +41,8 @@ pub fn handle_create(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>, body
         .unwrap_or(defaults.open_in);
     match scaffold_blank(&params) {
         Ok(scaffolded) => {
-            let name = params.name.clone();
-            begin_open(state, name, scaffolded.dir, Some(workspace));
-            respond(stream, 200, "application/json", br#"{"opening":true}"#);
+            let key = begin_open(state, scaffolded.dir, Some(workspace));
+            respond_json(stream, 200, &serde_json::json!({ "opening": true, "key": key }));
         }
         Err(error) => respond_error(stream, 400, &error),
     }

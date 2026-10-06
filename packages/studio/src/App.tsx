@@ -49,6 +49,7 @@ import {
 } from "./hooks/useStudioContextValue";
 import type { DomEditSelection } from "./components/editor/domEditing";
 import { StudioHeader } from "./components/StudioHeader";
+import { ProjectTabStrip } from "./components/shell/ProjectTabStrip";
 import { StudioStatusBar } from "./components/shell/StudioStatusBar";
 import { applyBootWorkspace } from "./story/WorkspaceSwitch";
 import { useGestureCommit } from "./hooks/useGestureCommit";
@@ -467,6 +468,7 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
                 onDrop={fileDrop.onDrop}
               >
                 <StudioHeader />
+                <ProjectTabStrip />
                 {previewPersistence.domEditSaveQueuePaused && !externalFileChanges.blocked && (
                   <SaveQueuePausedBanner
                     message={previewPersistence.domEditSaveQueuePaused}

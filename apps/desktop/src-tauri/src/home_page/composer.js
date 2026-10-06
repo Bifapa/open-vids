@@ -1024,6 +1024,15 @@
         update();
         notify();
       },
+      /* A spent draft: Start's project opened in a tab, and this page (which stays alive then) must not offer it again. */
+      clear() {
+        state.files = [];
+        refs.textarea.value = "";
+        renderFiles();
+        autoGrow();
+        update();
+        notify();
+      },
       getState: snapshot,
       isBusy: () => !!state.busy,
       focus() {

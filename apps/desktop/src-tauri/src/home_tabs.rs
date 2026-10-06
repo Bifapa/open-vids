@@ -1,0 +1,111 @@
+//! `/api/tabs*`: the data the pages' tab strips draw and the actions they ask for.
+//!
+//! - `GET /api/tabs` — `{ enabled, active, limit, tabs: [{ key, name, state }] }`.
+//! - `POST /api/tabs/activate {key}` — show the Projects page (`"home"`) or an open project.
+//! - `POST /api/tabs/close {key}` — close a project's tab (asks first when it is busy).
+//!
+//! The Projects page calls them with the home token. A Studio page is another
+//! loopback origin without the token: `home_routes::studio_grant` lets exactly
+//! these three endpoints through to the live Studio origins (see
+//! [`endpoint_method`]), nothing else of this server.
+
+use std::net::TcpStream;
+use std::sync::{Arc, Mutex};
+
+use super::coded_error::CodedError;
+use super::home_routes::{json_field, respond_cors, HomeInner};
+use super::tabs::{ActivateError, CloseOutcome, TabsView};
+
+pub fn owns(path: &str) -> bool {
+    path == "/api/tabs" || path.starts_with("/api/tabs/")
+}
+
+/// The method each tab endpoint answers; `None` for any other path. What a
+/// Studio page's token-less grant may reach, with its preflight.
+pub fn endpoint_method(path: &str) -> Option<&'static str> {
+    match path {
+        "/api/tabs" => Some("GET"),
+        "/api/tabs/activate" | "/api/tabs/close" => Some("POST"),
+        _ => None,
+    }
+}
+
+pub fn handle(
+    stream: &mut TcpStream,
+    state: &Arc<Mutex<HomeInner>>,
+    method: &str,
+    path: &str,
+    body: &[u8],
+    cors_origin: Option<&str>,
+) {
+    let view = state.lock().ok().map(|inner| inner.tabs.clone());
+    let Some(view) = view else {
+        reply(stream, 500, &CodedError::plain("state_poisoned", "state poisoned").body(), cors_origin);
+        return;
+    };
+    if endpoint_method(path) != Some(method) {
+        reply(stream, 404, &serde_json::json!({ "error": "not found" }), cors_origin);
+        return;
+    }
+    // A build without the beta feature has no strip: the endpoints are not there.
+    if !view.enabled {
+        if method == "GET" {
+            reply(stream, 200, &serde_json::json!(disabled(&view)), cors_origin);
+        } else {
+            reply(stream, 404, &serde_json::json!({ "error": "tabs are off" }), cors_origin);
+        }
+        return;
+    }
+    if method == "GET" {
+        reply(stream, 200, &serde_json::json!(view), cors_origin);
+        return;
+    }
+    let key = json_field(body, "key").unwrap_or_default();
+    let actions = state.lock().ok().and_then(|inner| inner.tab_actions.clone());
+    let Some(actions) = actions else {
+        let error = CodedError::plain("tabs_not_ready", "the window is not ready");
+        reply(stream, 503, &error.body(), cors_origin);
+        return;
+    };
+    // The actions run without the home lock: closing waits on a native dialog.
+    match path {
+        "/api/tabs/activate" => match actions.activate(&key) {
+            Ok(()) => reply(stream, 200, &serde_json::json!({ "ok": true }), cors_origin),
+            Err(ActivateError::Unknown) => {
+                let error = CodedError::plain("tab_unknown", "that tab is not open");
+                reply(stream, 404, &error.body(), cors_origin);
+            }
+            Err(ActivateError::Opening) => {
+                let error = CodedError::plain("tab_opening", "that project is still opening");
+                reply(stream, 409, &error.body(), cors_origin);
+            }
+        },
+        _ => match actions.close(&key) {
+            CloseOutcome::Closed => reply(stream, 200, &serde_json::json!({ "closed": true }), cors_origin),
+            CloseOutcome::Cancelled => reply(
+                stream,
+                200,
+                &serde_json::json!({ "closed": false, "cancelled": true }),
+                cors_origin,
+            ),
+            CloseOutcome::Unknown => {
+                let error = CodedError::plain("tab_unknown", "that tab is not open");
+                reply(stream, 404, &error.body(), cors_origin);
+            }
+        },
+    }
+}
+
+/// What a page that asks while the feature is off is told: no strip, no tabs.
+fn disabled(view: &TabsView) -> TabsView {
+    TabsView {
+        enabled: false,
+        active: super::tabs::HOME.to_string(),
+        limit: view.limit,
+        tabs: Vec::new(),
+    }
+}
+
+fn reply(stream: &mut TcpStream, code: u16, body: &serde_json::Value, cors_origin: Option<&str>) {
+    respond_cors(stream, code, "application/json", body.to_string().as_bytes(), cors_origin);
+}

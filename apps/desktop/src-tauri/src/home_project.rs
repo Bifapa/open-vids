@@ -27,7 +27,7 @@ use std::sync::{Arc, Mutex};
 
 use super::coded_error::CodedError;
 use super::home_api::{recent_json, respond_error, respond_json, unknown_project};
-use super::home_routes::{json_field, respond, HomeInner, OpenPhase};
+use super::home_routes::{json_field, respond, HomeInner};
 #[cfg(target_os = "macos")]
 use trash::macos::TrashContextExtMacos;
 
@@ -82,22 +82,18 @@ fn rename_recent(
     new_name: &str,
 ) -> Option<Result<serde_json::Value, RenameRefusal>> {
     let entry = inner.recents.find_by_key(key)?.clone();
-    if matches!(inner.open_phase, OpenPhase::Opening { .. }) {
+    if inner.is_opening(key) {
         return Some(Err(RenameRefusal::Failed(CodedError::plain(
             "project_opening_busy",
             "a project is opening — try again in a moment",
         ))));
     }
-    // The folder name IS the Studio id, so the open project cannot move
-    // out from under the running server (`#project/<id>` names it).
-    // `current_id` is set when an open completes and cleared by
-    // Show All Projects; the transient Opening phase above covers the
-    // window between request and completion.
-    if inner.current_id.as_deref() == Some(entry.id.as_str()) {
-        return Some(Err(RenameRefusal::Failed(CodedError::plain(
-            "project_in_use",
-            "that project is open — use Show All Projects first",
-        ))));
+    // The folder name IS the Studio id, so an open project cannot move out
+    // from under its running server (`#project/<id>` names it). The tab list
+    // covers every project the window has open, and also one whose server is
+    // still starting.
+    if inner.is_open(key) {
+        return Some(Err(RenameRefusal::Failed(project_in_use(inner))));
     }
     let new_dir = entry.dir.parent()?.join(new_name);
     // On a case-insensitive filesystem (APFS and NTFS defaults) a case-only
@@ -187,16 +183,33 @@ fn remove_dev_link(old_dir: &Path) {
     }
 }
 
+/// The refusal for changing a project that is open: in single-project mode it is
+/// closed by going back to the Projects page, with tabs by closing its tab.
+fn project_in_use(inner: &HomeInner) -> CodedError {
+    if inner.tabs.enabled {
+        CodedError::plain("project_in_use_tab", "that project is open — close its tab first")
+    } else {
+        CodedError::plain("project_in_use", "that project is open — use Show All Projects first")
+    }
+}
+
 pub fn handle_trash(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>, body: &[u8]) {
     let key = json_field(body, "id").unwrap_or_default();
-    let dir = state
-        .lock()
-        .ok()
-        .and_then(|inner| inner.recents.find_by_key(&key).map(|e| e.dir.clone()));
+    let (dir, refusal) = state.lock().ok().map_or((None, None), |inner| {
+        let dir = inner.recents.find_by_key(&key).map(|e| e.dir.clone());
+        let refusal = (dir.is_some() && inner.is_open(&key)).then(|| project_in_use(&inner));
+        (dir, refusal)
+    });
     let Some(dir) = dir else {
         respond_error(stream, 404, &unknown_project());
         return;
     };
+    // Moving a project to the Trash under its own running server would leave
+    // the tab on a folder that is gone.
+    if let Some(error) = refusal {
+        respond_error(stream, 400, &error);
+        return;
+    }
     // macOS: NsFileManager, not the crate's default Finder AppleScript. The
     // Finder path shells out to `osascript` and hangs without a GUI session
     // to answer it (observed: the request never returns under `tauri dev`),

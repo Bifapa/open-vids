@@ -1,0 +1,195 @@
+/* Project tabs on the Projects page (tabs.js, beta feature `projectTabs`): the 32 px tab strip under the
+   titlebar, and the marks a project card wears while its project opens or is open in a tab. Nothing here
+   applies unless tabs.js mounts the strip (`html.ov-has-tabs`) or home.js marks a card. */
+
+/* ---- The strip: a window grid row of its own between the 52 px titlebar and the content ---- */
+html.ov-has-tabs .window {
+  grid-template-rows: 52px 32px minmax(0, 1fr) 26px;
+}
+/* The setup covers the window below the titlebar (onboarding.css), so the strip is not part of it. */
+html.is-onboarding .ov-tabs {
+  visibility: hidden;
+}
+.ov-tabs {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  min-width: 0;
+  height: 32px;
+  padding: 0 var(--sp-2);
+  background: var(--bg-1);
+  border-bottom: 1px solid var(--border-subtle);
+  user-select: none;
+  -webkit-user-select: none;
+}
+/* Overflow scrolls sideways (no wrap, no visible scrollbar). */
+.ov-tabs-list {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+.ov-tabs-list::-webkit-scrollbar {
+  display: none;
+}
+/* What is left of the row drags the window (data-tauri-drag-region); the tabs and + take clicks. */
+.ov-tabs-fill {
+  flex: 1 1 0;
+  align-self: stretch;
+  min-width: 0;
+}
+.ov-tabs-add {
+  flex: none;
+}
+
+/* ---- A tab: the wrapper carries the look, its buttons carry the behaviour ---- */
+.ov-tab {
+  display: flex;
+  align-items: center;
+  flex: 0 1 auto;
+  min-width: 96px;
+  max-width: 180px;
+  height: 26px;
+  border-radius: var(--r-md);
+  color: var(--fg-2);
+  font-size: var(--text-sm);
+}
+.ov-tab:hover,
+.ov-tab.is-selected {
+  background: var(--surface-2);
+}
+.ov-tab.is-selected {
+  color: var(--fg);
+}
+/* The Projects tab never shrinks and stays in view while the project tabs scroll under it. */
+.ov-tab.is-home {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  flex: none;
+  min-width: 0;
+}
+.ov-tab.is-opening {
+  color: var(--fg-3);
+}
+.ov-tab.is-closing .ov-tab-btn {
+  opacity: 0.6;
+}
+.ov-tab-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  padding: 0 4px 0 8px;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: default;
+}
+.ov-tab.is-home .ov-tab-btn {
+  padding-right: 10px;
+}
+/* The focus ring runs inside the tab's box (the scrolling list would clip one drawn outside) and takes in the ×. */
+.ov-tab-btn:focus-visible {
+  outline: none;
+}
+.ov-tab:has(.ov-tab-btn:focus-visible),
+.ov-tab-x:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.ov-tab-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The × keeps its slot (names do not jump on hover); it shows on hover, on keyboard focus, on a selected tab. */
+.ov-tab-x,
+.ov-tab-spin {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin-right: 4px;
+  padding: 0;
+}
+.ov-tab-x {
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: inherit;
+  opacity: 0;
+  cursor: default;
+}
+.ov-tab:hover .ov-tab-x,
+.ov-tab:focus-within .ov-tab-x,
+.ov-tab.is-selected .ov-tab-x {
+  opacity: 1;
+}
+.ov-tab-x:hover {
+  background: var(--surface-3);
+  color: var(--fg);
+}
+.ov-tab-x:disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+/* ---- A project card or row (home.js): its project is opening, or is open in a tab ---- */
+/* Opening: the card is inert (no click, double-click, menu or hover) until the shell answers. */
+.card.is-opening,
+.row.is-opening {
+  pointer-events: none;
+}
+.thumb-opening {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: color-mix(in oklch, var(--on-media-bg) 62%, transparent);
+}
+.thumb-opening .spinner {
+  width: 18px;
+  height: 18px;
+  border-color: color-mix(in oklch, var(--on-media) 30%, transparent);
+  border-top-color: var(--on-media);
+}
+.row .thumb-opening .spinner {
+  width: 12px;
+  height: 12px;
+}
+/* Open in a tab: a chip on the thumbnail (cards), a badge after the name (list rows). */
+.thumb-open {
+  position: absolute;
+  left: 4px;
+  bottom: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 5px 1px 4px;
+  border-radius: var(--r-xs);
+  background: var(--on-media-bg);
+  color: var(--on-media);
+  font: 500 var(--text-num) / 14px var(--font-ui);
+}
+.thumb-open::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--on-media-ok);
+}
+.row-name .open-badge {
+  flex: none;
+}

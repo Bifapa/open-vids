@@ -22,6 +22,7 @@ use std::thread;
 
 use super::home_auth::HomeToken;
 use super::home_routes::{serve_one, thumb_name_for, HomeInner, OpenPhase, Opener, PrefsListener};
+use super::tabs::{TabActions, TabsView};
 
 /// A loopback listener that serves the home page for the app's lifetime.
 pub struct HomeServer {
@@ -99,46 +100,67 @@ impl HomeServer {
     }
     /// Record a successful open in recents (also used at launch for
     /// `OPENVIDS_PROJECT` so it appears on the home screen).
-    /// A recorded open is complete, so the loading phase clears too.
-    pub fn record_open(&self, id: &str, dir: &Path) {
+    /// A recorded open is complete, so its loading phase clears too.
+    pub fn record_open(&self, dir: &Path) {
         let dims = std::fs::read_to_string(dir.join("index.html"))
             .ok()
             .filter(|html| super::structure::is_composition_source(html))
             .map(|html| super::structure::composition_dimensions(&html));
+        let id = dir
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_default();
         if let Ok(mut inner) = self.inner.lock() {
             inner
                 .recents
-                .record(id, dir, dims.map(|(w, _)| w), dims.map(|(_, h)| h));
-            inner.current_id = Some(id.to_string());
-            inner.open_phase = super::home_routes::OpenPhase::Idle;
+                .record(&id, dir, dims.map(|(w, _)| w), dims.map(|(_, h)| h));
+            inner.clear_open(&super::recents::project_key(dir));
         }
     }
 
-    pub fn set_open_phase(&self, phase: OpenPhase) {
+    /// What the open of the project `key` is doing now.
+    pub fn set_open_phase(&self, key: &str, phase: OpenPhase) {
         if let Ok(mut inner) = self.inner.lock() {
-            inner.open_phase = phase;
+            inner.set_open_phase(key, phase);
         }
     }
 
-    /// Publish (or clear) the Studio origin Studio's token-less menu posts
-    /// are checked against. Set when lib.rs navigates to a project, cleared
-    /// by the shared home-navigation cleanup.
-    pub fn set_studio_origin(&self, origin: Option<String>) {
+    /// The open of `key` is over without a result to show (it was handed to an
+    /// open tab, or superseded).
+    pub fn clear_open(&self, key: &str) {
         if let Ok(mut inner) = self.inner.lock() {
-            inner.studio_origin = origin;
+            inner.clear_open(key);
         }
     }
 
-    /// Forget the currently open project (the window navigated home). Only a
-    /// real return from a project skips the launch intro on the next page
-    /// load; the navigation hook also fires for the window's first load and
-    /// for reloads of the Projects page, which keep the intro.
-    pub fn clear_current(&self) {
+    /// Quit and update: no open is under way any more.
+    pub fn clear_opens(&self) {
         if let Ok(mut inner) = self.inner.lock() {
-            if inner.current_id.take().is_some() {
+            inner.opens.clear();
+        }
+    }
+
+    /// Publish the projects the window has open and the Studio origins they
+    /// serve: the tab strip's data and what token-less Studio requests are
+    /// checked against. Set by lib.rs on every change. A return from the last
+    /// project to the Projects page (tabs off: the window navigated back) skips
+    /// the launch intro on the next page load; the navigation hook also fires
+    /// for the window's first load and for reloads of the Projects page, which
+    /// keep the intro.
+    pub fn publish_tabs(&self, view: TabsView, origins: Vec<String>) {
+        if let Ok(mut inner) = self.inner.lock() {
+            if !view.enabled && view.tabs.is_empty() && !inner.tabs.tabs.is_empty() {
                 inner.skip_intro = true;
             }
-            inner.open_phase = OpenPhase::Idle;
+            inner.tabs = view;
+            inner.studio_origins = origins;
+        }
+    }
+
+    /// What a tab activation / close does in the window.
+    pub fn set_tab_actions(&self, actions: Arc<dyn TabActions>) {
+        if let Ok(mut inner) = self.inner.lock() {
+            inner.tab_actions = Some(actions);
         }
     }
 
@@ -237,20 +259,39 @@ mod tests {
         String::from_utf8_lossy(&body).contains("\"intro\":true")
     }
 
+    /// What the shell publishes for a window with these projects open (tabs off: one project at most).
+    fn shown(enabled: bool, keys: &[&str]) -> TabsView {
+        TabsView {
+            enabled,
+            tabs: keys
+                .iter()
+                .map(|key| super::super::tabs::TabInfo {
+                    key: (*key).to_string(),
+                    name: (*key).to_string(),
+                    state: super::super::tabs::TabState::Open,
+                })
+                .collect(),
+            ..TabsView::default()
+        }
+    }
+
     #[test]
     fn intro_plays_on_launch_and_reload_but_not_after_a_project() {
         let (server, origin) = spawn("intro");
-        // The navigation hook runs for the first load and every reload too.
-        server.clear_current();
+        // Reloading the Projects page keeps the intro, however often it loads.
         assert!(intro_flag(&origin), "cold load plays the intro");
-        server.clear_current();
         assert!(intro_flag(&origin), "reloading Projects plays it again");
 
-        let project = base("intro-project");
-        server.record_open("intro-project", &project);
-        server.clear_current();
+        // A project was open and the window came back to the Projects page.
+        server.publish_tabs(shown(false, &["project"]), Vec::new());
+        server.publish_tabs(shown(false, &[]), Vec::new());
         assert!(!intro_flag(&origin), "coming back from a project skips it");
         assert!(intro_flag(&origin), "the skip applies to that one load only");
+
+        // With tabs the Projects page is never left, so closing the last tab does not skip its next load.
+        server.publish_tabs(shown(true, &["project"]), Vec::new());
+        server.publish_tabs(shown(true, &[]), Vec::new());
+        assert!(intro_flag(&origin));
     }
 
     fn raw(origin: &str, req: &str, body: Option<&[u8]>) -> (u16, Vec<u8>) {
@@ -393,21 +434,28 @@ mod tests {
         let refused: serde_json::Value = serde_json::from_slice(&refused).unwrap();
         assert_eq!(refused["code"], "unknown_project");
         assert_eq!(refused["error"], "unknown project");
-        // Record the open (sets the current-open guard), prove renaming
-        // the open project is refused, then simulate Show All Projects and
-        // rename for real.
-        server.record_open("my-video", &dest);
+        // Record the open and publish the project as open, prove renaming and
+        // trashing the open project is refused (with tabs the refusal says to close
+        // its tab), then simulate Show All Projects and rename for real.
+        server.record_open(&dest);
         let my_video = recent_key(&origin, &token, "my-video");
-        let (code, refused) = post(
-            &origin,
-            "/api/rename",
-            Some(&token),
-            serde_json::json!({"id": my_video, "new_name": "blocked"}).to_string().as_bytes(),
+        server.publish_tabs(shown(false, &[&my_video]), Vec::new());
+        let refuse = |path: &str, body: serde_json::Value| {
+            let (code, refused) = post(&origin, path, Some(&token), body.to_string().as_bytes());
+            assert_eq!(code, 400, "{path}");
+            serde_json::from_slice::<serde_json::Value>(&refused).unwrap()
+        };
+        let blocked = serde_json::json!({"id": my_video, "new_name": "blocked"});
+        assert_eq!(refuse("/api/rename", blocked.clone())["code"], "project_in_use");
+        server.publish_tabs(shown(true, &[&my_video]), Vec::new());
+        assert_eq!(refuse("/api/rename", blocked)["code"], "project_in_use_tab");
+        assert_eq!(
+            refuse("/api/trash", serde_json::json!({"id": my_video}))["code"],
+            "project_in_use_tab",
+            "the open project is not moved to the Trash under its server"
         );
-        assert_eq!(code, 400);
-        let refused: serde_json::Value = serde_json::from_slice(&refused).unwrap();
-        assert_eq!(refused["code"], "project_in_use");
-        server.clear_current();
+        assert!(dest.is_dir());
+        server.publish_tabs(shown(false, &[]), Vec::new());
 
         // Rename moves the folder and keeps meta.json consistent.
         let (code, renamed_body) = post(
@@ -996,7 +1044,7 @@ if (command === "doctor") {
         let token = server.token_for_test();
         let dir = base("thumbs-proj");
         std::fs::create_dir_all(&dir).unwrap();
-        server.record_open("demo", &dir);
+        server.record_open(&dir);
         server.cache_thumbnail(&dir, b"fake-jpeg-bytes", "jpg");
         let (_, body) = get(&origin, "/api/recents", Some(&token));
         assert!(
@@ -1125,6 +1173,105 @@ if (command === "doctor") {
         (code, head, out[split..].to_vec())
     }
 
+    /// Records what the pages asked of the window and answers like the shell would.
+    struct FakeTabs(Mutex<Vec<String>>);
+
+    impl TabActions for FakeTabs {
+        fn activate(&self, key: &str) -> Result<(), super::super::tabs::ActivateError> {
+            use super::super::tabs::ActivateError;
+            self.0.lock().unwrap().push(format!("activate {key}"));
+            match key {
+                "gone" => Err(ActivateError::Unknown),
+                "starting" => Err(ActivateError::Opening),
+                _ => Ok(()),
+            }
+        }
+
+        fn close(&self, key: &str) -> super::super::tabs::CloseOutcome {
+            use super::super::tabs::CloseOutcome;
+            self.0.lock().unwrap().push(format!("close {key}"));
+            match key {
+                "busy" => CloseOutcome::Cancelled,
+                "gone" => CloseOutcome::Unknown,
+                _ => CloseOutcome::Closed,
+            }
+        }
+    }
+
+    /// The tab strip's data and actions: nothing exists with the feature off; with it on the shell's answer
+    /// reaches the page, a Studio origin reaches exactly these endpoints without the token, and every other
+    /// origin or path still needs it.
+    #[test]
+    fn the_tab_endpoints_exist_only_with_tabs_on_and_reach_studio_without_the_token() {
+        let (server, origin) = spawn("tabs");
+        let token = server.token_for_test();
+        let studio = "http://127.0.0.1:5210";
+        let fake = std::sync::Arc::new(FakeTabs(Mutex::new(Vec::new())));
+        server.set_tab_actions(fake.clone());
+
+        // Off: the strip is empty and nothing can be switched or closed, even with the token.
+        server.publish_tabs(shown(false, &["a"]), vec![studio.to_string()]);
+        let (code, body) = get(&origin, "/api/tabs", Some(&token));
+        assert_eq!(code, 200);
+        let off: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!((off["enabled"].as_bool(), off["tabs"].as_array().map(Vec::len)), (Some(false), Some(0)));
+        let (code, _) = post(&origin, "/api/tabs/close", Some(&token), br#"{"key":"a"}"#);
+        assert_eq!(code, 404);
+        let (code, _, _) = exchange(&origin, "GET", "/api/tabs", &[("Origin", studio)], b"");
+        assert_eq!(code, 403, "no grant to Studio while the feature is off");
+        assert!(fake.0.lock().unwrap().is_empty());
+
+        // On: the page sees the list; the actions run and their outcomes map to statuses.
+        server.publish_tabs(shown(true, &["a", "starting"]), vec![studio.to_string()]);
+        let (code, body) = get(&origin, "/api/tabs", Some(&token));
+        assert_eq!(code, 200);
+        let on: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(on["enabled"], true);
+        assert_eq!(on["active"], "home");
+        assert_eq!(on["tabs"][0]["key"], "a");
+        assert_eq!(on["tabs"][0]["state"], "open");
+        let act = |path: &str, key: &str| post(&origin, path, Some(&token), format!(r#"{{"key":"{key}"}}"#).as_bytes());
+        assert_eq!(act("/api/tabs/activate", "a").0, 200);
+        assert_eq!(act("/api/tabs/activate", "gone").0, 404);
+        assert_eq!(act("/api/tabs/activate", "starting").0, 409);
+        let (code, body) = act("/api/tabs/close", "busy");
+        assert_eq!(code, 200);
+        let cancelled: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!((cancelled["closed"].as_bool(), cancelled["cancelled"].as_bool()), (Some(false), Some(true)));
+        let (code, body) = act("/api/tabs/close", "a");
+        assert_eq!(code, 200);
+        assert_eq!(serde_json::from_slice::<serde_json::Value>(&body).unwrap()["closed"], true);
+        assert_eq!(act("/api/tabs/close", "gone").0, 404);
+        assert_eq!(post(&origin, "/api/tabs/close", None, br#"{"key":"a"}"#).0, 403, "the page needs its token");
+
+        // Studio reads the list and posts to the two actions with its own origin and no token, and is answered
+        // with CORS for exactly its origin; its preflight is granted; nothing else of the server is.
+        let (code, head, body) = exchange(&origin, "GET", "/api/tabs", &[("Origin", studio)], b"");
+        assert_eq!(code, 200);
+        assert_eq!(response_header(&head, "access-control-allow-origin").as_deref(), Some(studio));
+        assert_eq!(serde_json::from_slice::<serde_json::Value>(&body).unwrap()["tabs"][0]["key"], "a");
+        let (code, head, _) = exchange(
+            &origin,
+            "OPTIONS",
+            "/api/tabs/close",
+            &[("Origin", studio), ("Access-Control-Request-Method", "POST"), ("Access-Control-Request-Headers", "content-type")],
+            b"",
+        );
+        assert_eq!(code, 204);
+        assert_eq!(response_header(&head, "access-control-allow-methods").as_deref(), Some("POST"));
+        let (code, head, _) =
+            exchange(&origin, "POST", "/api/tabs/activate", &[("Origin", studio), ("Content-Type", "application/json")], br#"{"key":"home"}"#);
+        assert_eq!(code, 200);
+        assert_eq!(response_header(&head, "access-control-allow-origin").as_deref(), Some(studio));
+        for (method, path) in [("POST", "/api/open"), ("POST", "/api/trash"), ("GET", "/api/recents"), ("POST", "/api/tabs")] {
+            let (code, head, _) = exchange(&origin, method, path, &[("Origin", studio)], b"{}");
+            assert_eq!(code, 403, "{method} {path}");
+            assert!(response_header(&head, "access-control-allow-origin").is_none());
+        }
+        let (code, _, _) = exchange(&origin, "GET", "/api/tabs", &[("Origin", "http://127.0.0.1:9999")], b"");
+        assert_eq!(code, 403, "an origin that is not an open project's");
+    }
+
     /// The value of response header `name` (case-insensitive), if present.
     fn response_header(head: &str, name: &str) -> Option<String> {
         head.lines().find_map(|line| {
@@ -1165,7 +1312,7 @@ if (command === "doctor") {
         assert_eq!(code, 403);
         no_cors(&head);
 
-        server.set_studio_origin(Some(studio.to_string()));
+        server.publish_tabs(TabsView::default(), vec![studio.to_string()]);
         let ok_or_forbidden = if granted { 204 } else { 403 };
 
         // The preflight of each Studio menu post.
@@ -1297,7 +1444,7 @@ if (command === "doctor") {
 
         // Back on the Projects page the grant is gone: the same Studio origin is refused again, with or
         // without the token (a Studio `Origin` on the home port is foreign), so a stale port cannot be reused.
-        server.set_studio_origin(None);
+        server.publish_tabs(TabsView::default(), Vec::new());
         let (code, head, _) = post("/api/menu/open_project", Some(studio));
         assert_eq!(code, 403);
         no_cors(&head);

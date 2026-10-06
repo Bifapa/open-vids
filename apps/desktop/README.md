@@ -490,6 +490,26 @@ brings native and onnx packages; unused voice/memory engines are pruned at stagi
 and `OPENVIDS_AGENT_BUN`. `OPENVIDS_SKIP_AGENT_RUNTIME=1` stages an empty `agent-runtime/` (so the
 Tauri resource mapping still resolves) without sources or dependencies; Chat then reports "Agent unavailable".
 
+## Project tabs (beta)
+
+With beta features on (`channel::beta_features_enabled`) several projects stay open at once. Each open
+project is a slot in `AppState.tabs` (`tabs.rs`), keyed by `recents::project_key` (16 hex of the SHA-256
+of the folder path, never the folder name): its own Studio sidecar (own port, so own origin,
+`localStorage`, IndexedDB and SSE connection budget, own Chrome and agent runtime, roughly 500 MB) and its
+own child webview of the one window (`tab_webviews.rs`, Tauri's `unstable` multiwebview; the window's
+`main` webview keeps the Projects page). Switching shows one webview and hides the others. Opening a
+project that already has a tab focuses it; closing a tab (`POST /api/tabs/close`, Studio's back button
+only switches to the Projects tab) stops that project's sidecar group alone, after asking when a render
+(queued ones count) or an agent turn runs in it. Opening a seventh project asks first (soft limit). Quit and
+updates take every project out of the state and reap all sidecars together; on Windows each sidecar has its
+own kill-on-close Job Object (`proc.rs`). Trusted origins, downloads, render links, thumbnails, fork/duplicate
+refusals, rename/trash refusals and the updater's activity check all work over every open project.
+The pages draw the tab strip from `GET /api/tabs`; Studio (another origin, no home token) may call exactly
+that and `POST /api/tabs/{activate,close}` without the token. In `desktop:dev` every project is served by
+the one Vite server (same origin), so two open folders with the same name are refused. Native menu (beta
+only): ⌘W closes the tab (the window on the Projects page), Ctrl+Tab / Ctrl+Shift+Tab cycle tabs.
+With the feature off none of this exists and opening a project replaces the open one.
+
 ## Security
 
 The webview gets no native access beyond moving its own window; on Windows only, the

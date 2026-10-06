@@ -1366,3 +1366,46 @@ could be a noun). Keys are listed by area; a key that is not here reads as it sa
 - `activity.analyzing_stage_shots` — Chat row of a running media analysis: the stage that finds cuts between shots in the picture.
 - `activity.analyzing_stage_takes` — Chat row of a running media analysis: the stage that finds retakes, false starts and fillers.
 - `activity.analyzing_stage_segments` — Chat row of a running media analysis: the stage that drafts the content segments.
+
+## studio-tabs
+
+- `shell.tabs.label` — Accessible name of the project tab strip under the Studio titlebar (beta project tabs); the strip lists the projects open in this window.
+- `shell.tabs.projects` — Label of the first, non-closable tab: it brings back the Projects page.
+- `shell.tabs.close` — Tooltip and accessible name of the × on a project tab; {name} is the project's name.
+- `shell.tabs.new` — Tooltip and accessible name of the + after the last tab: it shows the Projects page to pick another project.
+- `shell.tabs.opening` — Tooltip and accessible name of a project tab whose project is still starting; {name} is the project's name.
+
+## home-tabs
+
+- `home.tabs.label` — Projects page tab strip (project tabs, beta): accessible name of the tab list.
+- `home.tabs.projects` — Projects page tab strip: label of the first, non-closable tab that is the Projects page itself.
+- `home.tabs.close` — Projects page tab strip: tooltip and accessible name of a project tab's × button. {name} is the project name.
+- `home.tabs.add` — Projects page tab strip: tooltip and accessible name of the trailing + button that returns to the Projects page.
+- `home.tabs.tabOpening` — Projects page tab strip: tooltip and accessible name of a project tab whose Studio is still starting. {name} is the project name.
+- `home.tabs.badge` — Projects page: small badge on a project card or row whose project is open in a tab. Short; states that the project is open.
+- `home.tabs.cardOpen` — Projects page: screen-reader description of a project card or row whose project is open in a tab.
+- `home.tabs.cardOpening` — Projects page: screen-reader description of a project card or row whose project is being opened (a spinner covers its thumbnail).
+- `home.tabs.error.activate` — Projects page tab strip: toast when switching to a project tab fails. {message} is the server's error.
+- `home.tabs.error.close` — Projects page tab strip: toast when closing a project tab fails. {name} is the project name, {message} the server's error.
+
+## tabs-shell
+
+- `home.error.project_in_use_tab` — Projects page: refusal to rename or move to Trash a project that is open in a tab.
+- `home.error.project_name_clash` — Projects page: opening a second project with the same folder name in the dev build. {name} is the folder name.
+- `home.error.tab_unknown` — Tab strip: the tab to switch to or close does not exist (any more).
+- `home.error.tab_opening` — Tab strip: switching to a project whose editor is still starting.
+- `home.error.tabs_not_ready` — Tab strip: the app window is not ready to switch tabs.
+- `home.error.tab_webview_failed` — Opening a project: the page for the project could not be created. {detail} is the technical reason.
+- `menu.file.closeTab` — File menu (project tabs): closes the project tab on screen, or the window on the Projects page. Shortcut Cmd/Ctrl+W.
+- `menu.window.nextTab` — Window menu (project tabs): switch to the next open project tab. Shortcut Ctrl+Tab.
+- `menu.window.previousTab` — Window menu (project tabs): switch to the previous open project tab. Shortcut Ctrl+Shift+Tab.
+- `dialog.tabs.closeBusy.title` — Native dialog title when closing a project tab that is rendering or running an agent turn.
+- `dialog.tabs.closeBusy.messageRender` — Native dialog: closing a tab with a render in progress. {name} is the project name.
+- `dialog.tabs.closeBusy.messageTurn` — Native dialog: closing a tab with an agent turn running. {name} is the project name.
+- `dialog.tabs.closeBusy.messageBoth` — Native dialog: closing a tab with a render and an agent turn in progress. {name} is the project name.
+- `dialog.tabs.closeBusy.close` — Native dialog confirm button: close the tab anyway.
+- `dialog.tabs.closeBusy.cancel` — Native dialog cancel button.
+- `dialog.tabs.limit.title` — Native dialog title when opening a project beyond the soft limit of open projects.
+- `dialog.tabs.limit.message` — Native dialog: memory warning. {count} is the number of projects already open.
+- `dialog.tabs.limit.open` — Native dialog confirm button: open the project anyway.
+- `dialog.tabs.limit.cancel` — Native dialog cancel button.
