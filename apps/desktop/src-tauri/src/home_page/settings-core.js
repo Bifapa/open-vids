@@ -10,6 +10,7 @@
   const SECTION_KEY = "ov-settings-section";
 
   /* Labels are catalog keys, read when drawn (a language switch redraws the window). */
+  /* A section marked `beta` exists only while OV.betaFeatures() (the shell's beta channel / debug builds). */
   const SECTIONS = [
     {
       group: "settings.nav.group.app",
@@ -44,11 +45,18 @@
     },
     {
       group: "settings.nav.group.workflow",
+      id: "voice",
+      label: "settings.section.voice",
+      icon: "audio",
+      beta: true,
+    },
+    {
+      group: "settings.nav.group.workflow",
       id: "execution",
       label: "settings.section.execution",
       icon: "gauge",
     },
-  ];
+  ].filter((s) => !s.beta || OV.betaFeatures());
   const tr = (key, params) => OVI18N.t(key, params);
   /* State keeps a message it will show as { key, params } until it is drawn, so a language switch re-words it
      (failMsg marks an error note). A plain string is text as it came from the server or the user. */

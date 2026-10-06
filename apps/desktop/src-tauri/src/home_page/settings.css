@@ -979,3 +979,56 @@ html:lang(ru) .st-agents .seg.text button {
 .st-upd-busy .st-actions {
   justify-content: flex-end;
 }
+
+/* ---- Voice (beta): provider fields, the key line, saved voices ---- */
+.st-vfield {
+  display: grid;
+  gap: 4px;
+}
+.st-vfield > span:first-child {
+  color: var(--fg-2);
+  font-size: var(--text-xs);
+  font-weight: 500;
+}
+.st-vhint {
+  color: var(--fg-3);
+  font-size: var(--text-xs);
+  line-height: 15px;
+}
+.st-vrules {
+  height: auto;
+  min-height: 64px;
+  padding: 6px 10px;
+  font: inherit;
+  font-size: var(--text-sm);
+  line-height: 18px;
+  resize: vertical;
+}
+.st-vkey {
+  display: grid;
+  gap: 6px;
+}
+.st-vkey .input {
+  flex: 1;
+  min-width: 0;
+}
+.st-vnote {
+  padding: var(--sp-2);
+  border-radius: var(--r-sm);
+  background: var(--bg-0);
+  border: 1px solid var(--border-subtle);
+}
+.st-vpreset {
+  grid-template-columns: var(--h-md) minmax(0, 1fr) auto;
+  gap: 6px var(--sp-3);
+}
+.st-vpreset .st-label > b,
+.st-vpreset .st-label > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.st-vpreset-err {
+  grid-column: 1 / -1;
+  margin: 0;
+}

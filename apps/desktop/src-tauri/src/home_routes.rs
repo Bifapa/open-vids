@@ -36,6 +36,8 @@
 //!   pass-throughs (`home_agent`).
 //! - `/api/research/{policy,sources…}` — the global Asset Search policy
 //!   (`home_research`).
+//! - `/api/voice/{providers,presets,audio}…` — the Settings › Voice files (beta): provider settings, keys, saved
+//!   voices and their sample audio, read and written on disk only (`home_voice`; synthesis is Studio's).
 //! - `/api/design-systems…` — the design-system library: list, detail,
 //!   rename and delete (`home_design`); `GET /design-files/<id>/…` — its
 //!   thumbnail, showcase and fonts, open like `/thumb/` and sandboxed.
@@ -383,6 +385,7 @@ fn route(
         (_, p) if super::home_research::owns(p) => {
             super::home_research::handle(s, &method, p, body)
         }
+        (_, p) if super::home_voice::owns(p) => super::home_voice::handle(s, &method, p, body),
         (_, p) if super::home_design::owns(p) => super::home_design::handle(s, &method, p, body),
         // Open like `/thumb/`: an `<img>` / `<iframe>` `src` cannot send the token (`home_design`).
         ("GET", p) if super::home_design::owns_files(p) => super::home_design::serve_file(s, p),
@@ -687,6 +690,7 @@ fn asset(name: &str) -> Option<(&'static str, &'static [u8])> {
         "settings-signin.js" => (JS, include_bytes!("home_page/settings-signin.js")),
         "settings-jev.js" => (JS, include_bytes!("home_page/settings-jev.js")),
         "settings-assets.js" => (JS, include_bytes!("home_page/settings-assets.js")),
+        "settings-voice.js" => (JS, include_bytes!("home_page/settings-voice.js")),
         "settings-execution.js" => (JS, include_bytes!("home_page/settings-execution.js")),
         "settings.js" => (JS, include_bytes!("home_page/settings.js")),
         "report.js" => (JS, include_bytes!("home_page/report.js")),

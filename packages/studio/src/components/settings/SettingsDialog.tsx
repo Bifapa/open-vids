@@ -5,6 +5,7 @@ import {
   Gauge,
   ImageSquare,
   Lightning,
+  Microphone,
   Plug,
   UsersThree,
   X,
@@ -25,7 +26,13 @@ import { JevSection } from "./JevSection";
 import { providerIssueCount } from "./providerStatus";
 import { ProvidersSection } from "./ProvidersSection";
 import { SettingsPage, SettingsUnavailable } from "./settingsLayout";
-import { SETTINGS_SECTIONS, useSettingsDialog, type SettingsSection } from "./settingsStore";
+import {
+  availableSettingsSections,
+  isSettingsSectionAvailable,
+  useSettingsDialog,
+  type SettingsSection,
+} from "./settingsStore";
+import { VoiceSection } from "./VoiceSection";
 import "./settings.css";
 
 const SECTION_META: Record<
@@ -53,6 +60,7 @@ const SECTION_META: Record<
     icon: <Plug />,
   },
   jev: { group: "settings.nav.group.ai", label: "settings.section.jev", icon: <Lightning /> },
+  voice: { group: "settings.nav.group.ai", label: "settings.section.voice", icon: <Microphone /> },
   assets: {
     group: "settings.nav.group.workflow",
     label: "settings.section.assets",
@@ -88,13 +96,14 @@ function SettingsNav({
   onSelect: (section: SettingsSection) => void;
 }) {
   const { t } = useTranslation();
+  const sections = availableSettingsSections();
   // Up and Down walk the sections, as in the prototype; Tab leaves the list.
   const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
     event.preventDefault();
-    const index = SETTINGS_SECTIONS.indexOf(section);
-    const step = event.key === "ArrowDown" ? 1 : SETTINGS_SECTIONS.length - 1;
-    const next = SETTINGS_SECTIONS[(index + step) % SETTINGS_SECTIONS.length];
+    const index = sections.indexOf(section);
+    const step = event.key === "ArrowDown" ? 1 : sections.length - 1;
+    const next = sections[(index + step) % sections.length];
     onSelect(next);
     event.currentTarget.querySelector<HTMLElement>(`[data-section="${next}"]`)?.focus();
   };
@@ -105,10 +114,9 @@ function SettingsNav({
       onKeyDown={onKeyDown}
       className="flex flex-col gap-px overflow-y-auto border-r border-border-subtle bg-bg-1 p-2"
     >
-      {SETTINGS_SECTIONS.map((id, index) => {
+      {sections.map((id, index) => {
         const meta = SECTION_META[id];
-        const first =
-          index === 0 || SECTION_META[SETTINGS_SECTIONS[index - 1]].group !== meta.group;
+        const first = index === 0 || SECTION_META[sections[index - 1]].group !== meta.group;
         const current = id === section;
         return (
           <div key={id} className="contents">
@@ -184,6 +192,8 @@ function SectionBody({
           <JevSection />
         </AgentSettingsGate>
       );
+    case "voice":
+      return <VoiceSection />;
     case "assets":
       return (
         <SettingsPage title={t("settings.section.assets")} lede={t("settings.studio.assetsLede")}>
@@ -207,7 +217,9 @@ function SectionBody({
 export function SettingsDialog({ agentStore }: { agentStore: AgentStore | null }) {
   const { t } = useTranslation();
   const open = useSettingsDialog((state) => state.open);
-  const section = useSettingsDialog((state) => state.section);
+  const storedSection = useSettingsDialog((state) => state.section);
+  // A beta section whose flag is off is never shown, whatever the store holds.
+  const section = isSettingsSectionAvailable(storedSection) ? storedSection : "general";
   const returnFocus = useSettingsDialog((state) => state.returnFocus);
   const setSection = useSettingsDialog((state) => state.setSection);
   const close = useSettingsDialog((state) => state.close);

@@ -1207,7 +1207,7 @@ fn unknown_source(id: &str) -> PolicyError {
 
 /// The characters JavaScript's `String.prototype.trim` removes (WhiteSpace and LineTerminator of ECMA-262), which
 /// differ from Rust's `char::is_whitespace` (U+FEFF is one, U+0085 is not).
-fn is_js_whitespace(c: char) -> bool {
+pub(crate) fn is_js_whitespace(c: char) -> bool {
     matches!(
         c,
         '\t' | '\n' | '\u{000B}' | '\u{000C}' | '\r' | ' ' | '\u{00A0}' | '\u{1680}' | '\u{2000}'..='\u{200A}'
@@ -1245,6 +1245,13 @@ fn random_hex4() -> String {
 /// inheritance is the protection, and tightening it further would risk
 /// locking the user out of their own policy file.
 fn write_private_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    write_atomic(path, bytes, 0o600)
+}
+
+/// `write_private_atomic` with the Unix mode of the file (0o600 for secrets, 0o644 for settings the user may
+/// read); the directory is 0700 either way. Shared with `voice_settings`.
+#[cfg_attr(not(unix), allow(unused_variables))]
+pub(crate) fn write_atomic(path: &Path, bytes: &[u8], file_mode: u32) -> std::io::Result<()> {
     use std::io::Write;
     let dir = path.parent().unwrap_or_else(|| Path::new("."));
     {
@@ -1269,7 +1276,7 @@ fn write_private_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
         #[cfg(unix)]
         {
             use std::os::unix::fs::OpenOptionsExt;
-            options.mode(0o600);
+            options.mode(file_mode);
         }
         let mut file = options.open(&tmp)?;
         file.write_all(bytes)?;
@@ -1277,7 +1284,7 @@ fn write_private_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o600))?;
+            std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(file_mode))?;
         }
         std::fs::rename(&tmp, path)
     };

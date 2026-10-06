@@ -77,6 +77,7 @@ mod home_routes;
 mod home_system;
 mod home_tabs;
 mod home_update;
+mod home_voice;
 mod i18n;
 mod install_job;
 mod intake;
@@ -101,6 +102,7 @@ mod tabs;
 mod telemetry;
 mod thumbnails;
 mod updater;
+mod voice_settings;
 
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
