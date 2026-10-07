@@ -15,7 +15,7 @@ import {
   presetVoiceOf,
   type CatalogControl,
 } from "./voiceDraft";
-import { entryChips, filterLabel } from "./voiceLabels";
+import { entryChips, filterLabel, languageName } from "./voiceLabels";
 import { VoicePlayButton } from "./VoicePlayButton";
 
 /** The "any" option of a filter's select (an empty value cannot be a select item). */
@@ -36,6 +36,12 @@ function initialFilters(control: CatalogControl, language: string | null): Recor
   if (!filter || !language) return {};
   const value = languageFilterValue(filter, language);
   return value === null ? {} : { [filter.id]: value };
+}
+
+/** The filter id the script's language went into (from the filters the catalog opened with), or null. */
+function languageFilterOf(control: CatalogControl, initial: Record<string, string>): string | null {
+  const filter = languageFilter(control.filters);
+  return filter !== null && initial[filter.id] !== undefined ? filter.id : null;
 }
 
 function FilterField({
@@ -101,13 +107,22 @@ export function VoiceCatalogPicker({
   const [filters, setFilters] = useState(() => initialFilters(control, language));
   const [state, setState] = useState<CatalogState>(EMPTY);
   const [reload, setReload] = useState(0);
+  // The script's language the catalog was asked without, because nothing is labelled for it.
+  const [relaxedFrom, setRelaxedFrom] = useState<string | null>(null);
+  // The filter the script's language was applied to, while it is still the pre-filter (not set by hand).
+  const languageFilterId = useRef<string | null>(
+    languageFilterOf(control, initialFilters(control, language)),
+  );
   const filtersKey = useMemo(() => JSON.stringify(Object.entries(filters).sort()), [filters]);
   const filtersRef = useRef(filters);
   filtersRef.current = filters;
 
   // A catalog of another provider starts from its own filters.
   useEffect(() => {
-    setFilters(initialFilters(control, language));
+    const initial = initialFilters(control, language);
+    languageFilterId.current = languageFilterOf(control, initial);
+    setRelaxedFrom(null);
+    setFilters(initial);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only a provider change resets the filters
   }, [providerId]);
 
@@ -118,6 +133,19 @@ export function VoiceCatalogPicker({
       .voices(providerId, { filters: filtersRef.current, model }, controller.signal)
       .then((page) => {
         if (controller.signal.aborted) return;
+        const prefiltered = languageFilterId.current;
+        if (prefiltered !== null && page.voices.length === 0 && page.nextPageToken === null) {
+          // Nothing is labelled for the script's language, but a voice can speak more languages than it is labelled
+          // with (Gemini's catalog has no Russian label, its voices speak it): ask again without the language.
+          languageFilterId.current = null;
+          setRelaxedFrom(language);
+          setFilters((current) => {
+            const next = { ...current };
+            delete next[prefiltered];
+            return next;
+          });
+          return;
+        }
         setState({
           entries: page.voices,
           nextPageToken: page.nextPageToken,
@@ -135,7 +163,7 @@ export function VoiceCatalogPicker({
         });
       });
     return () => controller.abort();
-  }, [client, providerId, model, filtersKey, reload, t]);
+  }, [client, providerId, model, language, filtersKey, reload, t]);
 
   const more = async () => {
     if (state.nextPageToken === null) return;
@@ -161,6 +189,13 @@ export function VoiceCatalogPicker({
     }
   };
 
+  /** A filter the user set by hand: the language pre-filter is theirs from now on, and is never taken off for them. */
+  const changeFilter = (id: string, next: string) => {
+    languageFilterId.current = null;
+    setRelaxedFrom(null);
+    setFilters((current) => ({ ...current, [id]: next }));
+  };
+
   return (
     <div className="grid gap-2" data-voice-control="catalog">
       {control.filters.length > 0 && (
@@ -174,10 +209,19 @@ export function VoiceCatalogPicker({
               key={filter.id}
               filter={filter}
               value={filters[filter.id] ?? ""}
-              onChange={(next) => setFilters((current) => ({ ...current, [filter.id]: next }))}
+              onChange={(next) => changeFilter(filter.id, next)}
             />
           ))}
         </div>
+      )}
+      {relaxedFrom !== null && state.entries.length > 0 && (
+        <p
+          role="status"
+          data-testid="voice-catalog-language-note"
+          className="m-0 text-xs leading-[15px] text-fg-3 [text-wrap:pretty]"
+        >
+          {t("voice.catalog.noLanguage", { language: languageName(relaxedFrom) })}
+        </p>
       )}
       <div
         className="max-h-[220px] overflow-y-auto overscroll-contain rounded-md border border-border-subtle bg-bg-0"

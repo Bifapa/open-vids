@@ -228,6 +228,20 @@ describe("gemini connector", () => {
     );
   });
 
+  it("reads the free tier's per-minute 429 as seen live: retry time from the message, not daily", async () => {
+    const body = {
+      error: {
+        code: "too_many_requests",
+        message:
+          "Rate limit exceeded for model gemini-3.8-flash-tts (limit: 3 requests per minute on Free Tier). Please retry in 11s or upgrade your tier at https://ai.dev/rate-limit.",
+      },
+    };
+    const noHeader = mockFetch(() => jsonResponse(body, 429));
+    const limited = await failureOf(geminiConnector.checkKey(context(info, noHeader.fetch)));
+    expect(limited.code).toBe("rate_limited");
+    expect(limited.params).toEqual({ retryAfterSeconds: 11 });
+  });
+
   it("maps 402 to quota_exhausted and 500 to provider_error", async () => {
     const paid = mockFetch(() =>
       jsonResponse({ error: { code: "payment_required", message: "no credit" } }, 402),

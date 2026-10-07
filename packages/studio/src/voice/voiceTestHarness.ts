@@ -12,7 +12,7 @@ import {
   type VoiceScriptView,
 } from "@hyperframes/agent-protocol";
 import { createVoiceStore, type VoiceStore } from "./voiceStore";
-import type { VoiceClient } from "./voiceClient";
+import type { VoiceCatalogQuery, VoiceClient } from "./voiceClient";
 
 export function audioRef(overrides: Partial<VoiceAudioRef> = {}): VoiceAudioRef {
   return {
@@ -187,8 +187,8 @@ export interface FakeVoiceData {
   providers?: VoiceProviderInfo[];
   presets?: VoicePreset[];
   controls?: VoiceProviderControls;
-  /** What the catalog answers; an `Error` makes every read fail with it. */
-  catalog?: VoiceCatalogPage | Error;
+  /** What the catalog answers: a page, a function of the query, or an `Error` that makes every read fail. */
+  catalog?: VoiceCatalogPage | Error | ((query: VoiceCatalogQuery) => VoiceCatalogPage);
   script?: VoiceScriptView;
 }
 
@@ -211,8 +211,9 @@ export function createFakeVoice(data: FakeVoiceData = {}): FakeVoice {
     removeApiKey: vi.fn(async (id) => replace({ ...find(id), hasKey: false, configured: false })),
     checkProvider: vi.fn(async () => ({ ok: true as const, sample: audioRef() })),
     controls: vi.fn(async () => data.controls ?? providerControls()),
-    voices: vi.fn(async () => {
+    voices: vi.fn(async (_id, query) => {
       if (data.catalog instanceof Error) throw data.catalog;
+      if (typeof data.catalog === "function") return data.catalog(query);
       return data.catalog ?? catalogPage();
     }),
     designVoice: vi.fn(async () => ({

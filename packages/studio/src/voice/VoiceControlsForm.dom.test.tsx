@@ -6,10 +6,17 @@
  * filtered by the script's language.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { VoiceCatalogPage, VoiceControl, VoicePresetVoice } from "@hyperframes/agent-protocol";
+import type { VoiceControl, VoicePresetVoice } from "@hyperframes/agent-protocol";
 import type * as voiceAudio from "./voiceAudio";
 import { cleanupMounted } from "../components/ui/mountHost.testHelpers";
-import { byLabel, mountVoice, pressAndSettle, settle, typeInto } from "./voiceDom.testHelpers";
+import {
+  byLabel,
+  mountVoice,
+  pressAndSettle,
+  settle,
+  typeAndEnter,
+  typeInto,
+} from "./voiceDom.testHelpers";
 import { VoiceControlsForm } from "./VoiceControlsForm";
 import type { VoiceDraft } from "./voiceDraft";
 import {
@@ -18,6 +25,7 @@ import {
   ELEVEN_CONTROLS,
   GEMINI_CONTROLS,
   providerControls,
+  type FakeVoiceData,
 } from "./voiceTestHarness";
 import { defaultSettings } from "./voiceDraft";
 
@@ -46,7 +54,7 @@ function mount(
   options: {
     draft?: Partial<VoiceDraft>;
     language?: string | null;
-    catalog?: VoiceCatalogPage | Error;
+    catalog?: FakeVoiceData["catalog"];
   } = {},
 ) {
   const onVoice = vi.fn<(voice: VoicePresetVoice | null) => void>();
@@ -275,5 +283,70 @@ describe("the catalog", () => {
     expect(alert?.textContent).toContain("Couldn’t load the voices: Catalog is down");
     await pressAndSettle(alert?.querySelector("button"));
     expect(calls.voices).toHaveBeenCalledTimes(2);
+  });
+
+  describe("when no voice is labelled for the script's language", () => {
+    const noteOf = (host: ParentNode) =>
+      host.querySelector('[data-testid="voice-catalog-language-note"]');
+    const names = (host: ParentNode) =>
+      [...host.querySelectorAll("[data-voice-id]")].map((row) => row.getAttribute("data-voice-id"));
+    const NONE_FOR_RUSSIAN: FakeVoiceData["catalog"] = ({ filters }) =>
+      filters.language_code === undefined
+        ? catalogPage([catalogEntry(), catalogEntry({ id: "Puck", name: "Puck" })])
+        : catalogPage([]);
+
+    it("loads the catalog again without the language, and says why", async () => {
+      const { host, calls } = mount(GEMINI_CONTROLS, { language: "ru", catalog: NONE_FOR_RUSSIAN });
+      await settle();
+      expect(calls.voices).toHaveBeenCalledTimes(2);
+      expect(calls.voices.mock.calls[0][1].filters).toEqual({ language_code: "ru" });
+      expect(calls.voices.mock.calls[1][1].filters).toEqual({});
+      expect(names(host)).toEqual(["Kore", "Puck"]);
+      expect(noteOf(host)?.textContent).toBe(
+        "No voices are labelled for Russian; these voices can still speak it — listen to a sample.",
+      );
+      // The empty-list message never shows for a list that was reloaded, and the filter shows no language.
+      expect(host.textContent).not.toContain("No voices match these filters.");
+      expect(byLabel<HTMLInputElement>(host, "Language")?.value).toBe("");
+    });
+
+    it("keeps the language when it finds voices, or when there is another page to look at", async () => {
+      const found = mount(GEMINI_CONTROLS, { language: "ru", catalog: catalogPage() });
+      await settle();
+      expect(found.calls.voices).toHaveBeenCalledTimes(1);
+      expect(noteOf(found.host)).toBeNull();
+      cleanupMounted();
+      const paged = mount(GEMINI_CONTROLS, {
+        language: "ru",
+        catalog: { voices: [], nextPageToken: "t2" },
+      });
+      await settle();
+      expect(paged.calls.voices).toHaveBeenCalledTimes(1);
+      expect(noteOf(paged.host)).toBeNull();
+    });
+
+    it("asks only once: a catalog empty without the language too just says it is empty", async () => {
+      const { host, calls } = mount(GEMINI_CONTROLS, { language: "ru", catalog: catalogPage([]) });
+      await settle();
+      expect(calls.voices).toHaveBeenCalledTimes(2);
+      expect(calls.voices.mock.calls[1][1].filters).toEqual({});
+      expect(host.textContent).toContain("No voices match these filters.");
+      expect(noteOf(host)).toBeNull();
+    });
+
+    it("leaves the filter to the user afterwards: a language chosen by hand is asked as chosen, never taken off", async () => {
+      const { host, calls } = mount(GEMINI_CONTROLS, { language: "ru", catalog: NONE_FOR_RUSSIAN });
+      await settle();
+      expect(noteOf(host)).not.toBeNull();
+      const language = byLabel<HTMLInputElement>(host, "Language");
+      if (!language) throw new Error("no language filter");
+      await typeAndEnter(language, "ru");
+      await settle();
+      expect(calls.voices).toHaveBeenCalledTimes(3);
+      expect(calls.voices.mock.calls[2][1].filters).toEqual({ language_code: "ru" });
+      expect(names(host)).toEqual([]);
+      expect(host.textContent).toContain("No voices match these filters.");
+      expect(noteOf(host)).toBeNull();
+    });
   });
 });

@@ -162,4 +162,19 @@ describe("placement and carve availability", () => {
     const ready = resolveCarveAvailability([voice, music]);
     expect(ready.kind === "ready" && ready.beds.map((bed) => bed.id)).toEqual(["bgm"]);
   });
+
+  it("takes a long audio clip named after its file for a bed, but not a short effect", () => {
+    const voice = clip("v", 0, 3, { voiceLine: "l1" });
+    // A Story build names the music clip after its file (seen live: "parallel-universe-cc0"), and the preview URL
+    // carries a project name that says "voice".
+    const named = clip("bed", 0, 26, {
+      domId: "parallel-universe-cc0",
+      src: "http://127.0.0.1:5190/api/projects/my-voice-story/preview/assets/parallel-universe-cc0.mp3",
+      track: 4,
+      authoredTrack: 4,
+    });
+    const blip = clip("blip", 2, 1.2, { domId: "ding-02", track: 5, authoredTrack: 5 });
+    const ready = resolveCarveAvailability([voice, named, blip]);
+    expect(ready.kind === "ready" && ready.beds.map((bed) => bed.id)).toEqual(["bed"]);
+  });
 });

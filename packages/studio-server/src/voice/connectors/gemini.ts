@@ -92,7 +92,16 @@ async function fail(ctx: ConnectorContext, response: Response): Promise<VoiceFai
       retryAfter = parseDurationSeconds(detail.retryDelay) ?? retryAfter;
   }
   retryAfter = parseDurationSeconds(error.retryDelay) ?? retryAfter;
-  const daily = code === "quota_exceeded" || /PerDay/i.test(JSON.stringify(details));
+  // Seen live (2026-10-07): a per-minute 429 is `{code:"too_many_requests", message:"… (limit: 3 requests per minute
+  // on Free Tier). Please retry in 11s …"}` with `Retry-After: 11`; a daily one names the day in the same message.
+  if (retryAfter === undefined) {
+    const seconds = /retry in (\d+(?:\.\d+)?)s/i.exec(message)?.[1];
+    if (seconds !== undefined) retryAfter = Math.ceil(Number(seconds));
+  }
+  const daily =
+    code === "quota_exceeded" ||
+    /PerDay/i.test(JSON.stringify(details)) ||
+    /per day|daily/i.test(message);
   return failureFor(
     response.status,
     {

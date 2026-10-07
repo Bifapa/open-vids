@@ -46,13 +46,21 @@ export type CarveAvailability =
   | { kind: "no-voice" }
   | { kind: "no-music" };
 
-/** Whether a clip is a music bed: tagged music, or named like one, and not part of the voiceover. */
+/** An audio clip this long that is neither named a voice nor an effect is taken for a music bed. */
+const UNNAMED_BED_MIN_SECONDS = 8;
+
+/**
+ * Whether a clip is a music bed: tagged music, or named like one, and not part of the voiceover. A Story build names
+ * clips after their file ("parallel-universe-cc0"), so a long audio clip with a name that says nothing counts too.
+ */
 export function isMusicBed(element: TimelineElement): boolean {
   if (!isAudioTimelineElement(element) || isVoiceoverClip(element)) return false;
   if (element.timelineRole !== undefined && element.timelineRole !== "music") return false;
-  return (
-    isMusicTrack(element) || classifyAudioName(element.domId ?? element.id, element.src) === "music"
-  );
+  if (isMusicTrack(element)) return true;
+  // Only the file's own name: the preview URL carries the project's name, which may say "voice" itself.
+  const file = element.src?.split(/[?#]/)[0]?.split("/").pop();
+  const kind = classifyAudioName(element.domId ?? element.id, file);
+  return kind === "music" || (kind === "unknown" && element.duration >= UNNAMED_BED_MIN_SECONDS);
 }
 
 /** What the "carve music under the voiceover" action can run on right now. */
