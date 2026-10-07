@@ -468,7 +468,7 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
                 onDrop={fileDrop.onDrop}
               >
                 <StudioHeader />
-                <ProjectTabStrip />
+                <ProjectTabStrip showToast={showToast} />
                 {previewPersistence.domEditSaveQueuePaused && !externalFileChanges.blocked && (
                   <SaveQueuePausedBanner
                     message={previewPersistence.domEditSaveQueuePaused}

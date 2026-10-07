@@ -514,7 +514,9 @@ updates take every project out of the state and reap all sidecars together; on W
 own kill-on-close Job Object (`proc.rs`). Trusted origins, downloads, render links, thumbnails, fork/duplicate
 refusals, rename/trash refusals and the updater's activity check all work over every open project.
 The pages draw the tab strip from `GET /api/tabs`; Studio (another origin, no home token) may call exactly
-that and `POST /api/tabs/{activate,close}` without the token. In `desktop:dev` every project is served by
+that and `POST /api/tabs/{activate,close,fork}` without the token. Every open project tab has a Fork button
+(`POST /api/tabs/fork`): the same background fork as the card menu's, after which the window shows the
+Projects page with the fork's progress and Cancel and then opens the fork as a new tab. In `desktop:dev` every project is served by
 the one Vite server (same origin), so two open folders with the same name are refused. Native menu (beta
 only): ⌘W closes the tab (the window on the Projects page), Ctrl+Tab / Ctrl+Shift+Tab cycle tabs.
 With the feature off none of this exists and opening a project replaces the open one.

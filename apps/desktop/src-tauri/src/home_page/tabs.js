@@ -18,6 +18,8 @@
   let seq = 0;
   /* Keys whose close request is in flight (the shell may be asking the user in a native dialog). */
   const pending = new Set();
+  /* A fork request is in flight (one at a time: the shell shows the Projects page's progress overlay for it). */
+  let forking = false;
   /* The key holding the roving tabindex. */
   let focusKey = HOME;
   let strip = null,
@@ -135,7 +137,18 @@
         ? ""
         : opening
           ? '<span class="ov-tab-spin" aria-hidden="true"><i class="spinner sm"></i></span>'
-          : '<button class="ov-tab-x" type="button" tabindex="-1" data-close="' +
+          : '<button class="ov-tab-fork" type="button" tabindex="-1" data-fork="' +
+            key +
+            '" aria-label="' +
+            esc(tr("home.tabs.fork", { name: t.name })) +
+            '" title="' +
+            esc(tr("home.tabs.fork", { name: t.name })) +
+            '"' +
+            (forking ? " disabled" : "") +
+            ">" +
+            ic("fork", 11) +
+            "</button>" +
+            '<button class="ov-tab-x" type="button" tabindex="-1" data-close="' +
             key +
             '" aria-label="' +
             esc(tr("home.tabs.close", { name: t.name })) +
@@ -155,7 +168,7 @@
     if (!tabs.some((t) => t.key === focusKey)) focusKey = HOME;
     const had = list.contains(document.activeElement),
       at = had ? document.activeElement.dataset : {},
-      focused = at.key || at.close || null;
+      focused = at.key || at.close || at.fork || null;
     list.setAttribute("aria-label", tr("home.tabs.label"));
     list.innerHTML = tabs.map(tabHtml).join("");
     const add = strip.querySelector(".ov-tabs-add");
@@ -203,6 +216,25 @@
         refresh();
       });
   }
+  /* Fork: the shell starts the copy of this tab's project and this page shows its progress overlay (with Cancel);
+     the finished fork opens as a new tab. One request at a time. */
+  function forkTab(key) {
+    const t = find(key);
+    if (!t || t.state !== "open" || forking) return;
+    forking = true;
+    render();
+    api("/api/tabs/fork", { key })
+      .then(() => window.OVFork && window.OVFork.adopt())
+      .catch((err) => {
+        if (err.status !== 404)
+          toast(tr("home.error.fork", { name: t.name, message: describeError(err) }));
+      })
+      .finally(() => {
+        forking = false;
+        render();
+        refresh();
+      });
+  }
   /* + "Open another project": back to the Projects page, which is here already — put the cursor where a project
      is found or described. */
   function openAnother() {
@@ -216,6 +248,8 @@
   function onClick(e) {
     const x = e.target.closest("[data-close]");
     if (x) return closeTab(x.dataset.close);
+    const fork = e.target.closest("[data-fork]");
+    if (fork) return forkTab(fork.dataset.fork);
     const tab = e.target.closest('[role="tab"]');
     if (tab) return activateTab(tab.dataset.key);
     if (e.target.closest(".ov-tabs-add")) openAnother();

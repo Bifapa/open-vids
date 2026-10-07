@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   activateTab,
   closeTab,
+  forkTab,
   fetchTabs,
   parseTabsSnapshot,
   readOpenvidsTabKey,
@@ -232,5 +233,47 @@ describe("the home server client", () => {
       }),
     );
     await expect(closeTab(HOME, KEY_A)).resolves.toBe("failed");
+  });
+
+  it("forkTab is ok only for { ok: true } and keeps a refusal's code, params and sentence", async () => {
+    const fetchMock = stubFetch({ ok: true, fork: { phase: "copying" } });
+    await expect(forkTab(HOME, KEY_A)).resolves.toEqual({ ok: true });
+    expect(fetchMock.mock.calls[0][0]).toBe(`${HOME}/api/tabs/fork`);
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({ key: KEY_A });
+
+    stubFetch(
+      {
+        error: "an agent turn is running in “A”",
+        code: "copy_turn_running",
+        params: { name: "A", nested: { no: 1 }, pid: 42 },
+      },
+      false,
+    );
+    await expect(forkTab(HOME, KEY_A)).resolves.toEqual({
+      ok: false,
+      code: "copy_turn_running",
+      params: { name: "A", pid: 42 },
+      message: "an agent turn is running in “A”",
+    });
+    // A 2xx without ok:true is not a started fork.
+    stubFetch({ fork: {} });
+    await expect(forkTab(HOME, KEY_A)).resolves.toEqual({
+      ok: false,
+      code: null,
+      params: {},
+      message: "",
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new Error("offline");
+      }),
+    );
+    await expect(forkTab(HOME, KEY_A)).resolves.toEqual({
+      ok: false,
+      code: null,
+      params: {},
+      message: "",
+    });
   });
 });

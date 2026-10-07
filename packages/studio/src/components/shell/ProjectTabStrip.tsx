@@ -1,18 +1,29 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
-import { House, Plus, X } from "@phosphor-icons/react";
+import { GitFork, House, Plus, X } from "@phosphor-icons/react";
 import { useProjectTabs } from "../../hooks/useProjectTabs";
-import { useTranslation } from "../../i18n";
+import { isTranslationKey, useTranslation } from "../../i18n";
 import { HOME_TAB_KEY, type ProjectTab } from "../../utils/openvidsTabs";
 import { cn, IconButton, Spinner, Tooltip } from "../ui";
 
 const TAB_FOCUS =
   "outline-hidden focus-visible:outline-solid focus-visible:outline-2 focus-visible:-outline-offset-1 focus-visible:outline-accent";
 
-/** The tab box: a 26 px, 6 px-radius chip. `group` lets the × appear when the box is hovered. */
+/** The tab box: a 26 px, 6 px-radius chip. `group` lets the fork and × buttons appear when the box is hovered. */
 function tabBoxClass(selected: boolean, inert: boolean): string {
   return cn(
     "group flex h-[26px] items-center rounded-md text-sm transition-colors duration-hover",
     selected ? "bg-surface-2 text-fg" : cn("text-fg-2", !inert && "hover:bg-surface-2"),
+  );
+}
+
+/** An 18 px icon button at the end of a project tab (fork, ×): hidden until the tab is hovered, focused or selected. */
+function tabActionClass(selected: boolean): string {
+  return cn(
+    "flex size-[18px] shrink-0 items-center justify-center rounded-sm text-fg-3 transition-[opacity,background-color,color] duration-hover",
+    "hover:bg-surface-3 hover:text-fg disabled:cursor-not-allowed disabled:text-fg-disabled disabled:hover:bg-transparent",
+    "focus-visible:opacity-100",
+    TAB_FOCUS,
+    selected ? "opacity-100" : "opacity-0 group-hover:opacity-100",
   );
 }
 
@@ -47,8 +58,11 @@ interface ProjectTabStripViewProps {
   tabs: readonly ProjectTab[];
   /** The tab with a close request waiting on the shell: every × stays off until it is answered. */
   closingKey: string | null;
+  /** The tab with a fork request waiting on the shell: every fork button stays off until it is answered. */
+  forkingKey: string | null;
   onActivate: (key: string) => void;
   onClose: (key: string) => void;
+  onFork: (key: string) => void;
 }
 
 /**
@@ -61,13 +75,16 @@ export function ProjectTabStripView({
   selectedKey,
   tabs,
   closingKey,
+  forkingKey,
   onActivate,
   onClose,
+  onFork,
 }: ProjectTabStripViewProps) {
   const { t } = useTranslation();
   const listRef = useRef<HTMLDivElement>(null);
   const [focusKey, setFocusKey] = useState(selectedKey);
   const closing = closingKey !== null;
+  const forking = forkingKey !== null;
 
   // The one tab in the Tab order: the last one focused, else the shown one, else Projects.
   const switchable = (key: string) =>
@@ -146,11 +163,12 @@ export function ProjectTabStripView({
           const selected = tab.key === selectedKey;
           const openingLabel = t("shell.tabs.opening", { name: tab.name });
           const closeLabel = t("shell.tabs.close", { name: tab.name });
+          const forkLabel = t("shell.tabs.fork", { name: tab.name });
           return (
             <div
               key={tab.key}
               role="presentation"
-              className={cn(tabBoxClass(selected, opening), "min-w-[96px] max-w-[180px] shrink")}
+              className={cn(tabBoxClass(selected, opening), "min-w-[120px] max-w-[180px] shrink")}
             >
               <button
                 type="button"
@@ -176,25 +194,34 @@ export function ProjectTabStripView({
                   <Spinner />
                 </span>
               ) : (
-                <Tooltip label={closeLabel} side="bottom">
-                  <button
-                    type="button"
-                    tabIndex={-1}
-                    aria-label={closeLabel}
-                    disabled={closing}
-                    data-testid="project-tab-close"
-                    onClick={() => onClose(tab.key)}
-                    className={cn(
-                      "mr-1 flex size-[18px] shrink-0 items-center justify-center rounded-sm text-fg-3 transition-[opacity,background-color,color] duration-hover",
-                      "hover:bg-surface-3 hover:text-fg disabled:cursor-not-allowed disabled:text-fg-disabled disabled:hover:bg-transparent",
-                      "focus-visible:opacity-100",
-                      TAB_FOCUS,
-                      selected ? "opacity-100" : "opacity-0 group-hover:opacity-100",
-                    )}
-                  >
-                    <X size={10} weight="bold" aria-hidden />
-                  </button>
-                </Tooltip>
+                <>
+                  <Tooltip label={forkLabel} side="bottom">
+                    <button
+                      type="button"
+                      tabIndex={-1}
+                      aria-label={forkLabel}
+                      disabled={forking}
+                      data-testid="project-tab-fork"
+                      onClick={() => onFork(tab.key)}
+                      className={cn(tabActionClass(selected), "mr-0.5")}
+                    >
+                      <GitFork size={12} aria-hidden />
+                    </button>
+                  </Tooltip>
+                  <Tooltip label={closeLabel} side="bottom">
+                    <button
+                      type="button"
+                      tabIndex={-1}
+                      aria-label={closeLabel}
+                      disabled={closing}
+                      data-testid="project-tab-close"
+                      onClick={() => onClose(tab.key)}
+                      className={cn(tabActionClass(selected), "mr-1")}
+                    >
+                      <X size={10} weight="bold" aria-hidden />
+                    </button>
+                  </Tooltip>
+                </>
               )}
             </div>
           );
@@ -214,21 +241,43 @@ export function ProjectTabStripView({
   );
 }
 
+interface ProjectTabStripProps {
+  showToast: (message: string, tone?: "error" | "info") => number | void;
+}
+
 /**
  * The strip under the Studio titlebar when project tabs are on (beta, in the desktop, this page has a
  * tab key and the shell says tabs are enabled); nothing at all otherwise, so the layout is the one
  * Studio always had. This page is only visible while it is the active tab, so its own tab is the selected one.
+ * A fork the shell starts needs no reply here (the window moves to the Projects page, which shows the
+ * copy's progress); one it refuses is a toast.
  */
-export function ProjectTabStrip() {
+export function ProjectTabStrip({ showToast }: ProjectTabStripProps) {
   const projectTabs = useProjectTabs();
+  const { t } = useTranslation();
   if (!projectTabs) return null;
+  const { snapshot, fork } = projectTabs;
+  const onFork = async (key: string) => {
+    const result = await fork(key);
+    if (!result || result.ok) return;
+    const name = snapshot.tabs.find((tab) => tab.key === key)?.name ?? key;
+    // The Projects page's own wording for the server's code, else the server's message.
+    const codeKey = `home.error.${result.code}`;
+    const message =
+      result.code && isTranslationKey(codeKey)
+        ? t(codeKey, result.params)
+        : result.message || t("home.error.unknown");
+    showToast(t("shell.tabs.forkFailed", { name, message }), "error");
+  };
   return (
     <ProjectTabStripView
       selectedKey={projectTabs.ownKey}
-      tabs={projectTabs.snapshot.tabs}
+      tabs={snapshot.tabs}
       closingKey={projectTabs.closingKey}
+      forkingKey={projectTabs.forkingKey}
       onActivate={projectTabs.activate}
       onClose={projectTabs.close}
+      onFork={onFork}
     />
   );
 }

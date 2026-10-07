@@ -1379,6 +1379,12 @@ if (command === "doctor") {
                 _ => CloseOutcome::Closed,
             }
         }
+
+        fn project_dir(&self, key: &str) -> Option<std::path::PathBuf> {
+            self.0.lock().unwrap().push(format!("dir {key}"));
+            // "unlisted" is open in a tab but its folder is not in Recent.
+            (key == "unlisted").then(|| std::env::temp_dir().join("openvids-tabs-fork-unlisted"))
+        }
     }
 
     /// The tab strip's data and actions: nothing exists with the feature off; with it on the shell's answer
@@ -1425,6 +1431,12 @@ if (command === "doctor") {
         assert_eq!(code, 200);
         assert_eq!(serde_json::from_slice::<serde_json::Value>(&body).unwrap()["closed"], true);
         assert_eq!(act("/api/tabs/close", "gone").0, 404);
+        // A fork needs an open tab whose project Recent knows; a refusal starts nothing and switches nothing.
+        let (code, body) = act("/api/tabs/fork", "gone");
+        assert_eq!((code, serde_json::from_slice::<serde_json::Value>(&body).unwrap()["code"].clone()), (404, "tab_unknown".into()));
+        let (code, body) = act("/api/tabs/fork", "unlisted");
+        assert_eq!((code, serde_json::from_slice::<serde_json::Value>(&body).unwrap()["code"].clone()), (404, "unknown_project".into()));
+        assert!(!fake.0.lock().unwrap().iter().any(|call| call == "activate home"), "a refused fork leaves the window as it is");
         assert_eq!(post(&origin, "/api/tabs/close", None, br#"{"key":"a"}"#).0, 403, "the page needs its token");
 
         // Studio reads the list and posts to the two actions with its own origin and no token, and is answered
@@ -1445,6 +1457,10 @@ if (command === "doctor") {
         let (code, head, _) =
             exchange(&origin, "POST", "/api/tabs/activate", &[("Origin", studio), ("Content-Type", "application/json")], br#"{"key":"home"}"#);
         assert_eq!(code, 200);
+        assert_eq!(response_header(&head, "access-control-allow-origin").as_deref(), Some(studio));
+        // The fork endpoint is granted to Studio too, refusals included (so the page can read why).
+        let (code, head, _) = exchange(&origin, "POST", "/api/tabs/fork", &[("Origin", studio)], br#"{"key":"gone"}"#);
+        assert_eq!(code, 404);
         assert_eq!(response_header(&head, "access-control-allow-origin").as_deref(), Some(studio));
         for (method, path) in [("POST", "/api/open"), ("POST", "/api/trash"), ("GET", "/api/recents"), ("POST", "/api/tabs")] {
             let (code, head, _) = exchange(&origin, method, path, &[("Origin", studio)], b"{}");

@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 
 /**
- * The project tab strip: who is selected, what a click, a ×, a spinner and the keys do, and that the page
+ * The project tab strip: who is selected, what a click, a fork, a ×, a spinner and the keys do, and that the page
  * draws nothing at all when tabs are off. The view takes its data as props; the wrapper is exercised
  * against a stand-in for the shell's home server.
  */
@@ -58,23 +58,32 @@ function render(element: ReactElement): HTMLElement {
 interface Handlers {
   onActivate: Mock<(key: string) => void>;
   onClose: Mock<(key: string) => void>;
+  onFork: Mock<(key: string) => void>;
 }
 
 function renderView(
-  props: { tabs?: ProjectTab[]; selectedKey?: string; closingKey?: string | null } = {},
+  props: {
+    tabs?: ProjectTab[];
+    selectedKey?: string;
+    closingKey?: string | null;
+    forkingKey?: string | null;
+  } = {},
 ): { host: HTMLElement } & Handlers {
   const onActivate = vi.fn<(key: string) => void>();
   const onClose = vi.fn<(key: string) => void>();
+  const onFork = vi.fn<(key: string) => void>();
   const host = render(
     <ProjectTabStripView
       selectedKey={props.selectedKey ?? OWN}
       tabs={props.tabs ?? TABS}
       closingKey={props.closingKey ?? null}
+      forkingKey={props.forkingKey ?? null}
       onActivate={onActivate}
       onClose={onClose}
+      onFork={onFork}
     />,
   );
-  return { host, onActivate, onClose };
+  return { host, onActivate, onClose, onFork };
 }
 
 function tab(host: HTMLElement, key: string): HTMLButtonElement {
@@ -85,6 +94,10 @@ function tab(host: HTMLElement, key: string): HTMLButtonElement {
 
 function closeButtons(host: HTMLElement): HTMLButtonElement[] {
   return Array.from(host.querySelectorAll<HTMLButtonElement>('[data-testid="project-tab-close"]'));
+}
+
+function forkButtons(host: HTMLElement): HTMLButtonElement[] {
+  return Array.from(host.querySelectorAll<HTMLButtonElement>('[data-testid="project-tab-fork"]'));
 }
 
 function press(el: Element, key: string): boolean {
@@ -179,6 +192,52 @@ describe("ProjectTabStripView", () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
+  it("puts a fork button before the × of every settled tab, and none on Projects or a tab still opening", () => {
+    const { host } = renderView();
+    expect(forkButtons(host).map((el) => el.getAttribute("aria-label"))).toEqual([
+      "Fork Alpha",
+      "Fork Beta",
+    ]);
+    const own = Array.from(tab(host, OWN).parentElement?.querySelectorAll("button") ?? []);
+    expect(own.map((el) => el.getAttribute("data-testid"))).toEqual([
+      null,
+      "project-tab-fork",
+      "project-tab-close",
+    ]);
+    const forkOf = (key: string) =>
+      tab(host, key).parentElement?.querySelector('[data-testid="project-tab-fork"]');
+    expect(forkOf(BUSY)).toBeNull();
+    expect(forkOf("home")).toBeNull();
+  });
+
+  it("shows the fork button like the ×: always on the selected tab, on hover for the others", () => {
+    const { host } = renderView({ selectedKey: SECOND });
+    const [alpha, beta] = forkButtons(host);
+    expect(alpha.className).toContain("opacity-0");
+    expect(alpha.className).toContain("group-hover:opacity-100");
+    expect(beta.className).toContain("opacity-100");
+    expect(beta.className).not.toContain("opacity-0");
+  });
+
+  it("forks through the fork button once, without switching to the tab or closing it", () => {
+    const { host, onFork, onActivate, onClose } = renderView();
+    act(() => forkButtons(host)[1].click());
+    expect(onFork).toHaveBeenCalledTimes(1);
+    expect(onFork).toHaveBeenCalledWith(SECOND);
+    expect(onActivate).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("turns every fork button off while a fork waits on the shell, and leaves the × alone", () => {
+    const { host, onFork } = renderView({ forkingKey: SECOND });
+    const buttons = forkButtons(host);
+    expect(buttons.map((el) => el.disabled)).toEqual([true, true]);
+    act(() => buttons[0].click());
+    act(() => buttons[1].click());
+    expect(onFork).not.toHaveBeenCalled();
+    expect(closeButtons(host).map((el) => el.disabled)).toEqual([false, false]);
+  });
+
   it("keeps one tab in the Tab order: the selected one first, then the last one focused", () => {
     const { host } = renderView();
     const stops = () =>
@@ -188,8 +247,9 @@ describe("ProjectTabStripView", () => {
     expect(stops()).toEqual([OWN]);
     act(() => tab(host, SECOND).focus());
     expect(stops()).toEqual([SECOND]);
-    // The × buttons stay out of the Tab order: Delete closes the focused tab instead.
+    // The fork and × buttons stay out of the Tab order: Delete closes the focused tab instead.
     expect(closeButtons(host).every((el) => el.tabIndex === -1)).toBe(true);
+    expect(forkButtons(host).every((el) => el.tabIndex === -1)).toBe(true);
   });
 
   it("moves focus with the arrows (wrapping), Home and End, skipping a tab that is still opening", () => {
@@ -240,6 +300,7 @@ describe("ProjectTabStripView", () => {
     const { host } = renderView();
     expect(isTypingTarget(tab(host, OWN))).toBe(true);
     expect(isTypingTarget(closeButtons(host)[0])).toBe(true);
+    expect(isTypingTarget(forkButtons(host)[0])).toBe(true);
     expect(isTypingTarget(host.querySelector('button[aria-label="Open another project"]'))).toBe(
       true,
     );
@@ -292,6 +353,7 @@ describe("ProjectTabStrip", () => {
   const enabledUrl = `/?openvidsHome=${encodeURIComponent(HOME)}&openvidsChannel=beta&openvidsTab=${OWN}`;
   const flush = () =>
     act(async () => void (await new Promise((resolve) => setTimeout(resolve, 0))));
+  const showToast = vi.fn<(message: string, tone?: "error" | "info") => void>();
 
   it.each([
     ["the beta flag is off", `/?openvidsHome=${encodeURIComponent(HOME)}&openvidsTab=${OWN}`],
@@ -300,7 +362,7 @@ describe("ProjectTabStrip", () => {
   ])("renders nothing, not even an empty box, when %s", async (_why, url) => {
     const home = stubHome({ enabled: true, active: "home", limit: 6, tabs: [] });
     window.history.replaceState(null, "", url);
-    const host = render(<ProjectTabStrip />);
+    const host = render(<ProjectTabStrip showToast={showToast} />);
     await flush();
     expect(host.innerHTML).toBe("");
     expect(home.requests).toEqual([]);
@@ -309,7 +371,7 @@ describe("ProjectTabStrip", () => {
   it("renders nothing while the shell says tabs are off", async () => {
     stubHome({ enabled: false });
     window.history.replaceState(null, "", enabledUrl);
-    const host = render(<ProjectTabStrip />);
+    const host = render(<ProjectTabStrip showToast={showToast} />);
     await flush();
     expect(host.innerHTML).toBe("");
   });
@@ -325,7 +387,7 @@ describe("ProjectTabStrip", () => {
       ],
     });
     window.history.replaceState(null, "", enabledUrl);
-    const host = render(<ProjectTabStrip />);
+    const host = render(<ProjectTabStrip showToast={showToast} />);
     await flush();
 
     // `active` says Beta, but this page is only on screen while it is the active tab: its own is selected.

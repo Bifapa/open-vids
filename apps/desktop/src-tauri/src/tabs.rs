@@ -139,6 +139,9 @@ pub enum CloseOutcome {
 pub trait TabActions: Send + Sync {
     fn activate(&self, key: &str) -> Result<(), ActivateError>;
     fn close(&self, key: &str) -> CloseOutcome;
+    /// The folder of the project tab `key` once it is open (`None` while it is
+    /// still opening or when there is no such tab): what a fork copies.
+    fn project_dir(&self, key: &str) -> Option<std::path::PathBuf>;
 }
 
 /// Whose a failed open's failure is (`Tabs::fail`).

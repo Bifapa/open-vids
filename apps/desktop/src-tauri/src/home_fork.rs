@@ -1,5 +1,6 @@
 //! Fork: a project's copy with lineage, made in the background while the Projects page shows progress
-//! (`/api/fork/*`, token-gated like every `/api/` route). The copying is `project_copy`'s; this is the job around it.
+//! (`/api/fork/*`, token-gated like every `/api/` route; a tab strip starts one through `POST /api/tabs/fork`,
+//! `home_tabs`). The copying is `project_copy`'s; this is the job around it.
 //!
 //! - `POST /api/fork {id}` — start forking the recent `id` (the one already running for the same project is
 //!   returned as it is). Answers `{ ok, fork }` with the job state; 404 `unknown_project`, 410 `folder_missing`,
@@ -192,6 +193,15 @@ pub fn owns(path: &str) -> bool {
     path.starts_with("/api/fork")
 }
 
+/// Start forking the recent `entry` (or report the fork of it already under way): the job's state, or the
+/// status and error to answer.
+pub fn start(state: &Arc<StdMutex<HomeInner>>, entry: RecentEntry) -> Result<Value, (u16, CodedError)> {
+    if !entry.dir.is_dir() {
+        return Err((410, folder_missing(&entry.dir)));
+    }
+    job().start(state, entry).map_err(|err| (409, err))
+}
+
 /// Handle one request for which `owns(path)` holds.
 pub fn handle(stream: &mut TcpStream, state: &Arc<StdMutex<HomeInner>>, method: &str, path: &str, body: &[u8]) {
     match (method, path) {
@@ -205,12 +215,9 @@ pub fn handle(stream: &mut TcpStream, state: &Arc<StdMutex<HomeInner>>, method: 
             let Some(entry) = find(state, &id) else {
                 return respond_error(stream, 404, &unknown_project());
             };
-            if !entry.dir.is_dir() {
-                return respond_error(stream, 410, &folder_missing(&entry.dir));
-            }
-            match job().start(state, entry) {
+            match start(state, entry) {
                 Ok(fork) => respond_json(stream, 200, &json!({ "ok": true, "fork": fork })),
-                Err(err) => respond_error(stream, 409, &err),
+                Err((status, err)) => respond_error(stream, status, &err),
             }
         }
         (_, "/api/fork" | "/api/fork/state" | "/api/fork/cancel") => {

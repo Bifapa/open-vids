@@ -460,7 +460,7 @@ const STUDIO_MENU_POSTS: [&str; 3] = ["open_project", "welcome", "check_updates"
 ///
 /// - the title-bar menu's `POST /api/menu/{open_project,welcome,check_updates}` and `GET /api/menu/about`, on the
 ///   Windows custom frame only (`frame == "custom"`; a query string never grants anything);
-/// - the tab strip's `GET /api/tabs`, `POST /api/tabs/{activate,close}`, on every platform, while the project tabs
+/// - the tab strip's `GET /api/tabs`, `POST /api/tabs/{activate,close,fork}`, on every platform, while the project tabs
 ///   feature is on (`tabs_enabled`).
 fn studio_endpoint_method(frame: &str, tabs_enabled: bool, path: &str) -> Option<&'static str> {
     if let Some(action) = path.strip_prefix("/api/menu/") {

@@ -3,18 +3,22 @@
 //! - `GET /api/tabs` — `{ enabled, active, limit, tabs: [{ key, name, state }] }`.
 //! - `POST /api/tabs/activate {key}` — show the Projects page (`"home"`) or an open project.
 //! - `POST /api/tabs/close {key}` — close a project's tab (asks first when it is busy).
+//! - `POST /api/tabs/fork {key}` — fork an open project tab's project (`home_fork`, same job and refusals as
+//!   `POST /api/fork`) and show the Projects page, which follows the copy and opens the fork as a new tab.
+//!   Answers `{ ok, fork }`; 404 `tab_unknown` (no open tab) / `unknown_project` (not in Recent).
 //!
 //! The Projects page calls them with the home token. A Studio page is another
 //! loopback origin without the token: `home_routes::studio_grant` lets exactly
-//! these three endpoints through to the live Studio origins (see
+//! these four endpoints through to the live Studio origins (see
 //! [`endpoint_method`]), nothing else of this server.
 
 use std::net::TcpStream;
 use std::sync::{Arc, Mutex};
 
 use super::coded_error::CodedError;
+use super::home_api::unknown_project;
 use super::home_routes::{json_field, respond_cors, HomeInner};
-use super::tabs::{ActivateError, CloseOutcome, TabsView};
+use super::tabs::{ActivateError, CloseOutcome, TabActions, TabsView, HOME};
 
 pub fn owns(path: &str) -> bool {
     path == "/api/tabs" || path.starts_with("/api/tabs/")
@@ -25,7 +29,7 @@ pub fn owns(path: &str) -> bool {
 pub fn endpoint_method(path: &str) -> Option<&'static str> {
     match path {
         "/api/tabs" => Some("GET"),
-        "/api/tabs/activate" | "/api/tabs/close" => Some("POST"),
+        "/api/tabs/activate" | "/api/tabs/close" | "/api/tabs/fork" => Some("POST"),
         _ => None,
     }
 }
@@ -80,6 +84,7 @@ pub fn handle(
                 reply(stream, 409, &error.body(), cors_origin);
             }
         },
+        "/api/tabs/fork" => fork(stream, state, actions.as_ref(), &key, cors_origin),
         _ => match actions.close(&key) {
             CloseOutcome::Closed => reply(stream, 200, &serde_json::json!({ "closed": true }), cors_origin),
             CloseOutcome::Cancelled => reply(
@@ -93,6 +98,32 @@ pub fn handle(
                 reply(stream, 404, &error.body(), cors_origin);
             }
         },
+    }
+}
+
+/// Start the fork of the open tab `key` and bring the Projects page, which shows its progress, to the front.
+fn fork(
+    stream: &mut TcpStream,
+    state: &Arc<Mutex<HomeInner>>,
+    actions: &dyn TabActions,
+    key: &str,
+    cors_origin: Option<&str>,
+) {
+    let Some(dir) = actions.project_dir(key) else {
+        let error = CodedError::plain("tab_unknown", "that tab is not open");
+        return reply(stream, 404, &error.body(), cors_origin);
+    };
+    let entry = state.lock().ok().and_then(|inner| inner.recents.find_by_dir(&dir).cloned());
+    let Some(entry) = entry else {
+        return reply(stream, 404, &unknown_project().body(), cors_origin);
+    };
+    match super::home_fork::start(state, entry) {
+        Ok(fork) => {
+            // The copy runs whatever the window shows; a failed switch only leaves the progress unseen here.
+            let _ = actions.activate(HOME);
+            reply(stream, 200, &serde_json::json!({ "ok": true, "fork": fork }), cors_origin);
+        }
+        Err((status, error)) => reply(stream, status, &error.body(), cors_origin),
     }
 }
 

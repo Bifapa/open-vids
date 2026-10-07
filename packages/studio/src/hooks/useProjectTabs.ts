@@ -5,9 +5,11 @@ import {
   activateTab,
   closeTab,
   fetchTabs,
+  forkTab,
   OPENVIDS_TABS_CHANGED_EVENT,
   readOpenvidsTabKey,
   sameTabsSnapshot,
+  type ForkTabResult,
   type TabsSnapshot,
 } from "../utils/openvidsTabs";
 
@@ -24,6 +26,13 @@ export interface ProjectTabs {
   close: (key: string) => void;
   /** The tab whose close request is waiting on the shell, if any. */
   closingKey: string | null;
+  /**
+   * Fork an open project tab: the shell starts the copy and switches to the Projects page, which shows its
+   * progress. One request at a time; null when this one was ignored (another is in flight).
+   */
+  fork: (key: string) => Promise<ForkTabResult | null>;
+  /** The tab whose fork request is waiting on the shell, if any. */
+  forkingKey: string | null;
 }
 
 interface TabsGate {
@@ -52,8 +61,10 @@ export function useProjectTabs(): ProjectTabs | null {
   const gate = useMemo(readTabsGate, []);
   const [snapshot, setSnapshot] = useState<TabsSnapshot | null>(null);
   const [closingKey, setClosingKey] = useState<string | null>(null);
+  const [forkingKey, setForkingKey] = useState<string | null>(null);
   const refreshRef = useRef<() => void>(() => {});
   const closingRef = useRef(false);
+  const forkingRef = useRef(false);
 
   useEffect(() => {
     if (!gate) return;
@@ -147,6 +158,21 @@ export function useProjectTabs(): ProjectTabs | null {
     [gate],
   );
 
+  const fork = useCallback(
+    async (key: string): Promise<ForkTabResult | null> => {
+      if (!gate || forkingRef.current) return null;
+      forkingRef.current = true;
+      setForkingKey(key);
+      try {
+        return await forkTab(gate.homeOrigin, key);
+      } finally {
+        forkingRef.current = false;
+        setForkingKey(null);
+      }
+    },
+    [gate],
+  );
+
   if (!gate || !snapshot || !snapshot.enabled) return null;
-  return { ownKey: gate.ownKey, snapshot, activate, close, closingKey };
+  return { ownKey: gate.ownKey, snapshot, activate, close, closingKey, fork, forkingKey };
 }

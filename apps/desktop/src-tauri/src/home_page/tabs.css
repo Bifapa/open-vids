@@ -51,7 +51,7 @@ html.is-onboarding .ov-tabs {
   display: flex;
   align-items: center;
   flex: 0 1 auto;
-  min-width: 96px;
+  min-width: 120px;
   max-width: 180px;
   height: 26px;
   border-radius: var(--r-md);
@@ -98,11 +98,12 @@ html.is-onboarding .ov-tabs {
 .ov-tab.is-home .ov-tab-btn {
   padding-right: 10px;
 }
-/* The focus ring runs inside the tab's box (the scrolling list would clip one drawn outside) and takes in the ×. */
+/* The focus ring runs inside the tab's box (the scrolling list would clip one drawn outside) and takes in the fork and ×. */
 .ov-tab-btn:focus-visible {
   outline: none;
 }
 .ov-tab:has(.ov-tab-btn:focus-visible),
+.ov-tab-fork:focus-visible,
 .ov-tab-x:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
@@ -113,7 +114,9 @@ html.is-onboarding .ov-tabs {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* The × keeps its slot (names do not jump on hover); it shows on hover, on keyboard focus, on a selected tab. */
+/* The fork and × keep their slots (names do not jump on hover); they show on hover, on keyboard focus, on a
+   selected tab. */
+.ov-tab-fork,
 .ov-tab-x,
 .ov-tab-spin {
   display: grid;
@@ -124,6 +127,11 @@ html.is-onboarding .ov-tabs {
   margin-right: 4px;
   padding: 0;
 }
+/* The fork sits right before the ×: a hair of air between the two hover chips. */
+.ov-tab-fork {
+  margin-right: 2px;
+}
+.ov-tab-fork,
 .ov-tab-x {
   border: 0;
   border-radius: var(--r-sm);
@@ -132,15 +140,20 @@ html.is-onboarding .ov-tabs {
   opacity: 0;
   cursor: default;
 }
+.ov-tab:hover .ov-tab-fork,
 .ov-tab:hover .ov-tab-x,
+.ov-tab:focus-within .ov-tab-fork,
 .ov-tab:focus-within .ov-tab-x,
+.ov-tab.is-selected .ov-tab-fork,
 .ov-tab.is-selected .ov-tab-x {
   opacity: 1;
 }
+.ov-tab-fork:hover,
 .ov-tab-x:hover {
   background: var(--surface-3);
   color: var(--fg);
 }
+.ov-tab-fork:disabled,
 .ov-tab-x:disabled {
   opacity: 0.5;
   pointer-events: none;

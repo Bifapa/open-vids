@@ -1071,6 +1071,8 @@
      reload, through /api/fork/state). */
   const FORK_POLL_FAILURES = 10;
   function watchFork(p, at) {
+    /* Already followed: the page's own Fork and adoptFork may both get here for the same job. */
+    if (forkTimer) return;
     S.opening = true;
     buildForking(p);
     clearInterval(forkTimer);
@@ -1120,6 +1122,21 @@
       .then(() => watchFork(p, at))
       .catch(fail("home.error.fork", { name: p.name }));
   }
+  /* A fork this page did not start (a tab's Fork button, in Studio or in the strip here) or one under way when
+     the page was reloaded: follow it like our own. The shell shows this page when a tab starts one. */
+  function adoptFork() {
+    if (forkTimer) return;
+    api("/api/fork/state")
+      .then((st) => {
+        if (st.phase !== "copying" || forkTimer) return;
+        load(() => {
+          if (!forkTimer && !S.opening)
+            watchFork(byId(st.id) || { id: st.id, name: st.name }, null);
+        });
+      })
+      .catch(() => undefined);
+  }
+  window.OVFork = { adopt: adoptFork };
   /* Removes from Recent only; Undo puts the same entry back. */
   function remove(p, at) {
     const list = visible(),
@@ -1471,6 +1488,10 @@
     window.addEventListener("openvids-tabs-changed", refreshRecents);
     for (const type of ["visibilitychange", "focus", "openvids-tabs-changed"])
       (type === "visibilitychange" ? document : window).addEventListener(type, adoptForeignOpens);
+    window.addEventListener("openvids-tabs-changed", adoptFork);
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) adoptFork();
+    });
   }
   /* A project with no clips yet (new, or an empty folder) opens in Media: importing is the first step. `extra` adds fields to the open request (the design systems' Create flow sends design: "create"). */
   function openProject(p, at, extra) {
@@ -2481,13 +2502,7 @@
     if (settingsFrame) settingsFrame.title = tr("home.settings.title");
     render();
   });
-  /* The page was reloaded while a fork is being made: show it again. */
-  api("/api/fork/state")
-    .then((st) => {
-      if (st.phase !== "copying") return;
-      load(() => watchFork(byId(st.id) || { id: st.id, name: st.name }, null));
-    })
-    .catch(() => undefined);
+  adoptFork();
   /* Opening at launch (Reopen last project / a project named on the command line): show it until Studio is up.
      With project tabs on, the shell lists these opens per project (adoptOpens), so the page asks it only once
      it knows whether tabs are on. */

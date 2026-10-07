@@ -211,4 +211,13 @@ impl TabActions for ShellTabs {
     fn close(&self, key: &str) -> CloseOutcome {
         close(&self.app, key)
     }
+
+    fn project_dir(&self, key: &str) -> Option<std::path::PathBuf> {
+        let state = self.app.try_state::<Mutex<AppState>>()?;
+        let state = state.lock().ok()?;
+        if !state.multi {
+            return None;
+        }
+        state.tabs.open_project(key).map(|open| open.project.dir.clone())
+    }
 }

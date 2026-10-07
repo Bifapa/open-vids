@@ -1,8 +1,8 @@
 /**
  * Project tabs (beta feature `projectTabs`): the desktop shell keeps several projects open in one window,
  * each its own webview, and draws no chrome of its own. The pages draw the tab strip from what the shell's
- * home server answers, and ask it to switch or close a tab. Studio is a different loopback origin than the
- * home server and holds no home token, so it talks to the three `/api/tabs*` endpoints with a plain
+ * home server answers, and ask it to switch, close or fork a tab. Studio is a different loopback origin than the
+ * home server and holds no home token, so it talks to the four `/api/tabs*` endpoints with a plain
  * `fetch` to the validated home origin, exactly like `invokeHomeMenuAction`: the home server grants its CORS
  * to the live Studio origin for these endpoints. Nothing here throws; an unreachable or confused home
  * server resolves `null` / `false` / `"failed"` and the strip keeps what it last knew.
@@ -40,6 +40,11 @@ export interface TabsSnapshot {
 }
 
 export type CloseTabResult = "closed" | "cancelled" | "failed";
+
+/** How a fork request ended: started (the shell shows the Projects page with its progress), or refused. */
+export type ForkTabResult =
+  | { ok: true }
+  | { ok: false; code: string | null; params: Record<string, string | number>; message: string };
 
 /** The shell mints 16 lowercase hex digits per project tab. */
 const TAB_KEY_PATTERN = /^[0-9a-f]{16}$/;
@@ -114,12 +119,12 @@ export function readOpenvidsTabKey(search?: string): string | null {
   return raw !== null && TAB_KEY_PATTERN.test(raw) ? raw : null;
 }
 
-/** One request to the home server's tab endpoints: the parsed JSON body, or null on any failure. */
-async function requestHomeTabs(
+/** One request to the home server's tab endpoints: whether it answered 2xx and its JSON body (null when none). */
+async function sendHomeTabs(
   homeOrigin: string,
   path: string,
   body?: { key: string },
-): Promise<unknown> {
+): Promise<{ ok: boolean; data: unknown } | null> {
   try {
     if (!isValidOpenvidsHomeOrigin(homeOrigin)) return null;
     const response = await fetch(
@@ -132,12 +137,21 @@ async function requestHomeTabs(
             body: JSON.stringify(body),
           },
     );
-    if (!response.ok) return null;
     const data: unknown = await response.json().catch(() => null);
-    return data;
+    return { ok: response.ok, data };
   } catch {
     return null;
   }
+}
+
+/** One request to the home server's tab endpoints: the parsed JSON body, or null on any failure. */
+async function requestHomeTabs(
+  homeOrigin: string,
+  path: string,
+  body?: { key: string },
+): Promise<unknown> {
+  const answer = await sendHomeTabs(homeOrigin, path, body);
+  return answer?.ok ? answer.data : null;
 }
 
 /** The shell's current tab list, or null when it cannot be reached or answers something malformed. */
@@ -160,4 +174,30 @@ export async function closeTab(homeOrigin: string, key: string): Promise<CloseTa
   if (!isRecord(data)) return "failed";
   if (data.closed === true) return "closed";
   return data.closed === false && data.cancelled === true ? "cancelled" : "failed";
+}
+
+function errorParams(value: unknown): Record<string, string | number> {
+  if (!isRecord(value)) return {};
+  const params: Record<string, string | number> = {};
+  for (const [name, param] of Object.entries(value)) {
+    if (typeof param === "string" || typeof param === "number") params[name] = param;
+  }
+  return params;
+}
+
+/**
+ * Fork an open project tab. The shell starts the copy and shows the Projects page, which follows its progress
+ * (with Cancel) and opens the fork as a new tab. A refusal carries the server's code, its params and its
+ * English sentence (`{ error, code, params }`); an unreachable server is a refusal without a code.
+ */
+export async function forkTab(homeOrigin: string, key: string): Promise<ForkTabResult> {
+  const answer = await sendHomeTabs(homeOrigin, "/api/tabs/fork", { key });
+  if (answer?.ok && isRecord(answer.data) && answer.data.ok === true) return { ok: true };
+  const data = isRecord(answer?.data) ? answer.data : {};
+  return {
+    ok: false,
+    code: typeof data.code === "string" && data.code ? data.code : null,
+    params: errorParams(data.params),
+    message: typeof data.error === "string" ? data.error : "",
+  };
 }
