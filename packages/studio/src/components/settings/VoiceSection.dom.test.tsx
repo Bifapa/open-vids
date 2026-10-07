@@ -3,9 +3,9 @@
 /**
  * Settings › Voice: each service with its key (saved, checked by listening, replaced, removed; never shown back), the
  * notes a service needs shown, the model picker, the custom server (address read-only), "Rules for the agent", and
- * the saved voices. The section exists only in a beta build.
+ * the saved voices.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { VoiceProviderInfo } from "@hyperframes/agent-protocol";
 import { cleanupMounted } from "../ui/mountHost.testHelpers";
 import type * as voiceAudio from "../../voice/voiceAudio";
@@ -20,7 +20,6 @@ import {
   settle,
   typeAndEnter,
   typeInto,
-  visitStudio,
 } from "../../voice/voiceDom.testHelpers";
 import {
   audioRef,
@@ -30,7 +29,7 @@ import {
   type FakeVoiceData,
 } from "../../voice/voiceTestHarness";
 import { useVoiceUi } from "../../voice/voiceUiStore";
-import { availableSettingsSections, openSettings, useSettingsDialog } from "./settingsStore";
+import { SETTINGS_SECTIONS, openSettings, useSettingsDialog } from "./settingsStore";
 import { VoiceSection } from "./VoiceSection";
 
 vi.mock("../../voice/voiceAudio", async (importOriginal) => ({
@@ -39,12 +38,9 @@ vi.mock("../../voice/voiceAudio", async (importOriginal) => ({
   stopVoiceSound: vi.fn(),
 }));
 
-beforeEach(() => visitStudio("beta"));
-
 afterEach(() => {
   cleanupMounted();
   vi.clearAllMocks();
-  visitStudio("");
   useVoiceUi.setState({ setup: null });
   useSettingsDialog.setState({ open: false, section: "general" });
 });
@@ -72,16 +68,11 @@ function mount(data: FakeVoiceData = {}) {
 const block = (host: ParentNode, id: string) =>
   host.querySelector<HTMLElement>(`[data-voice-provider="${id}"]`);
 
-describe("the beta gate", () => {
-  it("lists the Voice section in a beta build only, and openSettings never lands on it otherwise", () => {
-    expect(availableSettingsSections()).toContain("voice");
+describe("the Voice section", () => {
+  it("is listed in the sidebar and openSettings lands on it", () => {
+    expect(SETTINGS_SECTIONS).toContain("voice");
     openSettings("voice");
     expect(useSettingsDialog.getState().section).toBe("voice");
-    visitStudio("");
-    expect(availableSettingsSections()).not.toContain("voice");
-    useSettingsDialog.setState({ section: "general" });
-    openSettings("voice");
-    expect(useSettingsDialog.getState().section).toBe("general");
   });
 });
 

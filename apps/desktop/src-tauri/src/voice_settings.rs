@@ -1,4 +1,4 @@
-//! Voiceover settings on disk, for the Projects page (Settings › Voice, beta).
+//! Voiceover settings on disk, for the Projects page (Settings › Voice).
 //!
 //! Studio's server owns synthesis, key checks and the voice catalog
 //! (`packages/studio-server/src/voice/`); this shell makes no network call. It only reads and writes the files

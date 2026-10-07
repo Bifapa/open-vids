@@ -58,15 +58,14 @@ a way that looks like a Studio bug.
 
 ## Menus and shortcuts
 
-**File > Open Project Folder…** (`Ctrl+O`) switches projects and records the
-choice in recents. **File > Show All Projects** (`Ctrl+Shift+O`) stops the Studio
-sidecar and returns to the Projects home screen — so does the **Projects**
-back button in Studio's header (top-left, where the logo sits when Studio
-runs inside OpenVids). Both take the same path: the button is a plain
-document navigation to the home origin (the webview has no IPC by design),
-and an `on_navigation` hook on the main window runs the shared cleanup
-(stop sidecar, forget the project, idle the open phase) when that
-navigation lands. Outside OpenVids the logo renders exactly as before.
+**File > Open Project Folder…** (`Ctrl+O`) opens a project in a new tab (or
+switches to its tab) and records the choice in recents. **File > Show All
+Projects** (`Ctrl+Shift+O`) switches to the Projects tab; the open projects keep
+running in theirs — so does the **Projects** back button in Studio's header
+(top-left, where the logo sits when Studio runs inside OpenVids). The button is
+a plain document navigation to the home origin (the webview has no IPC by
+design); the project webview's navigation hook (`tab_webviews.rs`) cancels it
+and shows the Projects tab instead. Outside OpenVids the logo renders exactly as before.
 **Edit** supplies text-field Undo/Redo, Cut/Copy/Paste and Select All;
 **Window** owns Minimize, Full Screen and Close Window. **View > Reload**
 (`Ctrl+R`) reloads the current window without dropping the open project.
@@ -102,9 +101,9 @@ calls it directly, the Projects page reaches it through `POST /api/menu/:action`
 drift apart. Studio cannot forward the home token — it never receives it —
 so on the Windows custom frame (and only there; `OPENVIDS_SYSTEM_FRAME=1` and
 macOS get nothing) the home server answers a cross-origin request from
-exactly the live Studio origin (`studio_menu_grant` in `home_routes.rs`, the
-origin published by `lib.rs` on open and cleared by the shared home-navigation
-cleanup) for four endpoints: `POST /api/menu/{open_project,welcome,check_updates}`
+exactly the live Studio origins (`studio_grant` in `home_routes.rs`, the
+origins of the open project tabs, published by `tab_actions::publish_state`)
+for four endpoints: `POST /api/menu/{open_project,welcome,check_updates}`
 and `GET /api/menu/about`, plus the `OPTIONS` preflight of exactly one of
 them (requested method = that endpoint's, requested headers only
 `content-type`). `Host` must name this server. The answer carries the exact
@@ -260,7 +259,7 @@ apps/desktop/
     src/home.rs            Projects home screen: lifetime-owned loopback server
     src/home_page/         The Projects page + Settings window (HTML/CSS/JS, compiled in;
                            ported from the OpenDesign prototype, both themes)
-                           (design.js, design-sheets.js, design.css: the beta Design systems section)
+                           (design.js, design-sheets.js, design.css: the Design systems section)
     src/home_routes.rs     Home HTTP plumbing: routing, pages/assets, open/pick/thumbs
     src/home_api.rs        Preferences, metadata, duplicate/reveal/locate, recents undo,
                            composer files, start-from-chat, agent-runtime proxy routes
@@ -272,7 +271,7 @@ apps/desktop/
     src/design_snapshot.rs Copy a system into <project>/design/ + the tokens link of a new project
     src/design_lock.rs     <library>/.lock, compatible with studio-server's ownerLock.ts
     src/voice_settings.rs  Voice provider settings, keys (0600) and saved voices in ~/.openvids/voice, byte-compatible with studio-server src/voice
-    src/home_voice.rs      /api/voice/* JSON routes of the beta Voice settings section (providers, keys, presets, cached samples)
+    src/home_voice.rs      /api/voice/* JSON routes of the Voice settings section (providers, keys, presets, cached samples)
     src/home_project.rs    Rename (folder + meta.json) and Trash handlers (Recycle Bin via IFileOperation on Windows)
     src/home_auth.rs       Per-launch token + Host/Origin checks
     src/home_internal.rs   `/internal/*` for the Studio sidecars: per-launch secret, recents list/lookup, dev link file
@@ -342,20 +341,19 @@ At runtime the Rust side:
    actually bound,
 4. polls `GET /api/projects` until the server answers — a bound socket is not a
    ready server,
-5. navigates the window to `http://127.0.0.1:<port>/#project/<id>`.
+5. adds a child webview for the project's tab at `http://127.0.0.1:<port>/#project/<id>` and shows it.
 
 The child is supervised as a whole tree (`proc.rs`): on macOS/Linux it is placed in its own process group and terminated as a group, so the
 Chrome instances the render pipeline spawns go with it. On Windows the child is spawned with `CREATE_NO_WINDOW` and assigned to a kill-on-close Job Object, so quitting — or killing OpenVids from Task Manager — reaps bun, Chrome and FFmpeg outright (there is no SIGTERM on Windows; recovery happens on next start). `StudioServer::drop`
 reaps it on every exit path, and the `ExitRequested`/`Exit` handler does it
 explicitly.
 
-Before a project is chosen, the window shows the Projects home screen
-served by a small loopback listener that lives for the whole app lifetime
-(never dropped on project open, so File > Show All Projects is a plain
-navigation back). The embedded server is single-project by construction
-(`createStudioServer` takes one `projectDir`), so there is nothing to serve
-until the user picks something. Opening a different project restarts the
-sidecar rather than re-pointing at it; the home server is untouched.
+The Projects home screen is served by a small loopback listener that lives for
+the whole app lifetime and stays loaded in the window's own webview under the
+project tabs (File > Show All Projects only switches to it). The embedded server
+is single-project by construction (`createStudioServer` takes one `projectDir`),
+so every open project has a sidecar of its own; closing a tab stops only that
+sidecar, and the home server is untouched.
 
 ## Releasing
 
@@ -499,9 +497,9 @@ brings native and onnx packages; unused voice/memory engines are pruned at stagi
 and `OPENVIDS_AGENT_BUN`. `OPENVIDS_SKIP_AGENT_RUNTIME=1` stages an empty `agent-runtime/` (so the
 Tauri resource mapping still resolves) without sources or dependencies; Chat then reports "Agent unavailable".
 
-## Project tabs (beta)
+## Project tabs
 
-With beta features on (`channel::beta_features_enabled`) several projects stay open at once. Each open
+Several projects stay open at once, each in its own tab: it is the only window model. Each open
 project is a slot in `AppState.tabs` (`tabs.rs`), keyed by `recents::project_key` (16 hex of the SHA-256
 of the folder path, never the folder name): its own Studio sidecar (own port, so own origin,
 `localStorage`, IndexedDB and SSE connection budget, own Chrome and agent runtime, roughly 500 MB) and its
@@ -517,9 +515,8 @@ The pages draw the tab strip from `GET /api/tabs`; Studio (another origin, no ho
 that and `POST /api/tabs/{activate,close,fork}` without the token. Every open project tab has a Fork button
 (`POST /api/tabs/fork`): the same background fork as the card menu's, after which the window shows the
 Projects page with the fork's progress and Cancel and then opens the fork as a new tab. In `desktop:dev` every project is served by
-the one Vite server (same origin), so two open folders with the same name are refused. Native menu (beta
-only): ⌘W closes the tab (the window on the Projects page), Ctrl+Tab / Ctrl+Shift+Tab cycle tabs.
-With the feature off none of this exists and opening a project replaces the open one.
+the one Vite server (same origin), so two open folders with the same name are refused. Native menu:
+⌘W closes the tab (the window on the Projects page), Ctrl+Tab / Ctrl+Shift+Tab cycle tabs.
 
 ## Design-system library
 
@@ -530,13 +527,12 @@ The library of design systems lives in `~/.openvids/design-systems/` (`OPENVIDS_
 - **Lock** (`design_lock.rs`): `<root>/.lock`, the protocol of `packages/studio-server/src/history/ownerLock.ts`, so Studio sidecars and the Projects page exclude each other. The file holds `<pid>` or `<pid> <start key>`, claimed by hard-linking a draft file; a dead owner's lock is removed under `<root>/.lock.evict`, re-reading the owner first. The start key is what TypeScript computes (`ps -o lstart=` with `TZ=UTC` on macOS, `/proc` boot id + start time on Linux); on Windows this side cannot compute TypeScript's key, so it writes the pid alone and treats any live pid as the owner — a live process's lock is never evicted. A second writer waits up to 5 s and then answers `busy` (503). Checked against the TypeScript implementation both ways (a TS lock holds Rust out, a hard-killed TS lock is evicted, a Rust lock holds TS out).
 - **Snapshot** (`design_snapshot.rs`): `<project>/design/{system.html, tokens.css, logo.*, fonts/*, design.json}`, copied verbatim from the library's top level (no thumbnail), `design.json` last — `{schema: "openvids.project-design/1", id, version, name, attachedAt (epoch ms), createdAt, unknownLicenses, nonPortableFonts}` in that key order, 2-space pretty JSON with a trailing newline, the file Studio's attach writes; `createdAt` is the library entry's (`meta.json`) `createdAt`, the lineage of the system the id meant, so a deleted and recreated id is not mistaken for the same system. It is built in `<project>/.hyperframes/design-staging-<pid>-<random>` (where Studio stages too, so the preview signature and the history never see it; `.hyperframes/` is removed again when this call made it and it is empty) and swapped in as a whole (a previous `design/` is put back on failure); the library is held under its lock while it is read; a manifest whose `version` differs from `meta.json` (an interrupted update) is refused as `conflict`. Nothing outside `design/` is written.
 - **New project** (`POST /api/create` with an optional `designSystemId`): after the project is scaffolded and before Studio opens it, the snapshot is copied and `<link rel="stylesheet" href="design/tokens.css" />` is added as the last child of the root `index.html` head (compositions only pick the system up through that link; skipped when the template already links it). A failure never fails the creation: the answer is `{ "opening": true, "designWarning": "<message>" }` and no half `design/` is left. A malformed id is refused (400 `design_system_invalid`) before anything is created. `POST /api/open` takes an optional `design: "create"` with an optional `designSource` (`scratch`, `project`, `video` or `website`; anything else is dropped), which become the Studio URL parameters `openvidsDesign=create` and `openvidsDesignSource=<source>` (`sidecar::DesignIntent`, `with_design_intent`); without `design: "create"` neither is sent.
-- **Routes** (`home_design.rs`, served regardless of channel; only the UI is behind the `designSystems` beta flag): token-guarded JSON `GET /api/design-systems`, `GET|PATCH|DELETE /api/design-systems/:id`; and open GETs (the `/thumb/<file>` precedent: an `<img>`/`<iframe>` `src` cannot send the token header) `/design-files/<id>/thumbnail.svg`, `/design-files/<id>/system.html`, `/design-files/<id>/logo.<ext>` and `/design-files/<id>/fonts/<file>` — nothing else (not `tokens.css`, `meta.json` or `versions/`). The file answers carry `Content-Security-Policy: sandbox allow-same-origin; default-src 'none'; style-src 'unsafe-inline'; font-src 'self'; img-src 'self' data:` and `X-Content-Type-Options: nosniff`, and **no CORS header at all**: the page frames the showcase with `sandbox="allow-same-origin"` (no `allow-scripts`, so no script can run in the frame or when a file is opened on its own), the framed document keeps this server's origin, and its font requests are plain same-origin loads. A request from any other origin (a website, the opaque `null`) is refused by the Host/Origin check (403), the same on every `/api` and `/design-files` route. Errors are `{ "error": { "code", "message" } }`: `invalid_request` 400, `not_found` 404, `conflict` 409, `invalid_system` 422, `busy` 503, anything else 500.
-- **Projects page UI** (`home_page/design.js`, `design-sheets.js`, `design.css`; `index.html` loads them in every build, but with `OV.betaFeatures()` false `design.js` defines inert hooks and draws nothing, and asks nobody for anything): a «Design systems» section between Start and Recent (hidden while Recent is searched, and, with no projects and no systems, entirely) with cards — `<img>` of `/design-files/<id>/thumbnail.svg`, name, version, palette swatches (only plain `#hex` / `rgb()` / `hsl()` / `oklch()`-style values reach a style attribute), display font, a source badge (`scratch`/`project`/`video`/`website`/`external_project`) and warning chips for `unknownLicenses` ("checked before export") and `nonPortableFonts` ("system font, another computer may not have it"). Cards are a roving-tabindex list: ↵ view, F2 inline rename (`PATCH {name}`, Esc cancels, focus stays), Delete / ⌘⌫ a confirm sheet ("projects that use it keep their own copy", then `DELETE`), ⋯ / right-click / Shift+F10 the menu. **View** is a large sheet: `/design-files/<id>/system.html` in an `<iframe sandbox="allow-same-origin">` (no scripts; same origin, so its font requests need no CORS) beside the fonts (license, "not portable", "similar" for guessed fonts) and the transition / version counts from `GET /api/design-systems/:id`. **Create** picks a source and a project (recent, not missing) and calls the ordinary open with `design: "create"` + `designSource` (`scratch`/`project`/`video`/`website`); Studio shows its own dialog. The New Project sheet gets an optional «Design system» picker (None by default) that sends `designSystemId`; a `designWarning` in the answer is shown as a line on the opening overlay (the window navigates to Studio a moment later, so it is a notice, not a confirmation). `apps/desktop/tests/design-section.test.mjs` runs the scripts in happy-dom against a fake server.
-- **Beta flag for the server side** (`channel.rs` `env_value`, `sidecar.rs` `studio_command`): the Studio sidecar is started with `OPENVIDS_BETA_FEATURES=1` or `0` (the shell's own decision: build channel, or the user's `OPENVIDS_BETA_FEATURES`, spelled `true`/`yes`/`false`/`no` or not), and the agent runtime that Studio starts inherits it; the design tools and prompts are on only for the exact value `1`. Under `desktop:dev` there is no sidecar: `scripts/serve-studio-dev.mjs` gives the Vite server the same value (`devBetaFeatures`: on unless forced off).
+- **Routes** (`home_design.rs`): token-guarded JSON `GET /api/design-systems`, `GET|PATCH|DELETE /api/design-systems/:id`; and open GETs (the `/thumb/<file>` precedent: an `<img>`/`<iframe>` `src` cannot send the token header) `/design-files/<id>/thumbnail.svg`, `/design-files/<id>/system.html`, `/design-files/<id>/logo.<ext>` and `/design-files/<id>/fonts/<file>` — nothing else (not `tokens.css`, `meta.json` or `versions/`). The file answers carry `Content-Security-Policy: sandbox allow-same-origin; default-src 'none'; style-src 'unsafe-inline'; font-src 'self'; img-src 'self' data:` and `X-Content-Type-Options: nosniff`, and **no CORS header at all**: the page frames the showcase with `sandbox="allow-same-origin"` (no `allow-scripts`, so no script can run in the frame or when a file is opened on its own), the framed document keeps this server's origin, and its font requests are plain same-origin loads. A request from any other origin (a website, the opaque `null`) is refused by the Host/Origin check (403), the same on every `/api` and `/design-files` route. Errors are `{ "error": { "code", "message" } }`: `invalid_request` 400, `not_found` 404, `conflict` 409, `invalid_system` 422, `busy` 503, anything else 500.
+- **Projects page UI** (`home_page/design.js`, `design-sheets.js`, `design.css`): a «Design systems» section between Start and Recent (hidden while Recent is searched, and, with no projects and no systems, entirely) with cards — `<img>` of `/design-files/<id>/thumbnail.svg`, name, version, palette swatches (only plain `#hex` / `rgb()` / `hsl()` / `oklch()`-style values reach a style attribute), display font, a source badge (`scratch`/`project`/`video`/`website`/`external_project`) and warning chips for `unknownLicenses` ("checked before export") and `nonPortableFonts` ("system font, another computer may not have it"). Cards are a roving-tabindex list: ↵ view, F2 inline rename (`PATCH {name}`, Esc cancels, focus stays), Delete / ⌘⌫ a confirm sheet ("projects that use it keep their own copy", then `DELETE`), ⋯ / right-click / Shift+F10 the menu. **View** is a large sheet: `/design-files/<id>/system.html` in an `<iframe sandbox="allow-same-origin">` (no scripts; same origin, so its font requests need no CORS) beside the fonts (license, "not portable", "similar" for guessed fonts) and the transition / version counts from `GET /api/design-systems/:id`. **Create** picks a source and a project (recent, not missing) and calls the ordinary open with `design: "create"` + `designSource` (`scratch`/`project`/`video`/`website`); Studio shows its own dialog. The New Project sheet gets an optional «Design system» picker (None by default) that sends `designSystemId`; a `designWarning` in the answer is shown as a notice while the new project opens in its tab. `apps/desktop/tests/design-section.test.mjs` runs the scripts in happy-dom against a fake server.
 
-## Voice settings (beta)
+## Voice settings
 
-Voiceover (cloud text-to-speech with the user's own key) keeps its global state in `~/.openvids/voice/` (`OPENVIDS_VOICE_DIR` overrides it; same `home_dir()` rules). The Studio server (`packages/studio-server/src/voice`) owns synthesis; the Projects page's Settings › Voice (`home_page/settings-voice.js`, shown only when `OV.betaFeatures()`) edits the same files through `voice_settings.rs` + `home_voice.rs`. Formats are the contract of `packages/agent-protocol/src/voice.ts`:
+Voiceover (cloud text-to-speech with the user's own key) keeps its global state in `~/.openvids/voice/` (`OPENVIDS_VOICE_DIR` overrides it; same `home_dir()` rules). The Studio server (`packages/studio-server/src/voice`) owns synthesis; the Projects page's Settings › Voice (`home_page/settings-voice.js`) edits the same files through `voice_settings.rs` + `home_voice.rs`. Formats are the contract of `packages/agent-protocol/src/voice.ts`:
 
 - `providers.json` (`openvids.voice-providers/1`): per provider `model`, `agentRules`, and for the custom server `baseUrl` + `voice`; unknown keys are kept, an unreadable file is copied to `.bak` before it is replaced. The defaults table is duplicated in `packages/studio-server/src/voice/store/providers.ts`: change both together.
 - `api-keys.json` (`openvids.voice-keys/1`): owner-only (0600 in a 0700 folder), atomic; a key never appears in an answer or an error.

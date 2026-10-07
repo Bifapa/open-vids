@@ -20,7 +20,7 @@
     <script src="/assets/i18n.js"></script>
     <script>
       /* Theme and density before first paint (Settings → Appearance), then the launch intro gate: it plays on a cold start
-   and on reload; Rust skips it when the window comes back from a project or opens one at launch, and it
+   and on reload; Rust skips it when a project opens at launch, and it
    never plays under reduced motion. ?intro=1 forces it (review). */
       (function () {
         var boot = window.OV_BOOT || {};
@@ -31,10 +31,10 @@
         /* Language: the server injects the catalog (OV_BOOT.locales), so the first paint is already translated. */
         OVI18N.init(boot.prefs && boot.prefs.language, boot.locales);
         /* First-run onboarding: decided here, before first paint, so Projects never flashes first. It shows until
-   setup is finished (or skipped), and when Help › Welcome asked for it. ?onboarding=1|0 forces it (review). */
+   setup is finished (or skipped); Help › Welcome opens it later through ovHome.openOnboarding. ?onboarding=1|0 forces it (review). */
         var ob = new URLSearchParams(location.search).get("onboarding");
         var done = !!(boot.prefs && boot.prefs.onboarding && boot.prefs.onboarding.completedAt);
-        if (ob === "1" || (ob !== "0" && (boot.openOnboarding || !done)))
+        if (ob === "1" || (ob !== "0" && !done))
           document.documentElement.classList.add("is-onboarding");
         var force = new URLSearchParams(location.search).get("intro") === "1";
         if (

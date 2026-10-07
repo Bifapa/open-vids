@@ -25,7 +25,6 @@ import {
   pressAndSettle,
   settle,
   typeInto,
-  visitStudio,
 } from "../voiceDom.testHelpers";
 import { scriptView, voicePreset } from "../voiceTestHarness";
 import { VoiceoverPanel } from "./VoiceoverPanel";
@@ -108,14 +107,12 @@ function clipOps() {
 }
 
 beforeEach(() => {
-  visitStudio("beta");
   usePlayerStore.getState().setElements([]);
 });
 
 afterEach(() => {
   setAgentTurnRunning(false);
   cleanupMounted();
-  visitStudio("");
 });
 
 describe("Voiceover panel", () => {
@@ -270,13 +267,6 @@ describe("Voiceover panel", () => {
     await settle();
     expect(byTestId(host, "voice-captions-button")?.hasAttribute("disabled")).toBe(true);
     expect(byTestId(host, "voice-captions-reason")?.textContent).toContain("agent is editing");
-  });
-
-  it("renders nothing outside the beta channel", async () => {
-    visitStudio("");
-    const { host } = mountVoice(<VoiceoverPanel projectId="p1" />, { script: SCRIPT });
-    await settle();
-    expect(host.querySelector('[data-testid="voiceover-panel"]')).toBeNull();
   });
 
   it("saves an edited speaker text through the script with the line's id", async () => {

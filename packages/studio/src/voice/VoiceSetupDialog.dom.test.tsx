@@ -5,7 +5,7 @@
  * model, a sample of the user's own phrase (made once, reused), side-by-side comparison, listening with the video, and a
  * saved preset that resolves the opener.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { VoicePreset } from "@hyperframes/agent-protocol";
 import { useSettingsDialog } from "../components/settings/settingsStore";
 import { cleanupMounted } from "../components/ui/mountHost.testHelpers";
@@ -20,7 +20,6 @@ import {
   settle,
   typeAndEnter,
   typeInto,
-  visitStudio,
 } from "./voiceDom.testHelpers";
 import {
   audioRef,
@@ -42,12 +41,9 @@ vi.mock("./voiceAudio", async (importOriginal) => ({
   stopVoiceSound: vi.fn(),
 }));
 
-beforeEach(() => visitStudio("beta"));
-
 afterEach(() => {
   cleanupMounted();
   vi.clearAllMocks();
-  visitStudio("");
   useSettingsDialog.setState({ open: false, section: "general" });
 });
 

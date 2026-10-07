@@ -21,7 +21,6 @@ import { VoiceHost } from "../voice/VoiceHost";
 import { VoiceoverPanel } from "../voice/panel/VoiceoverPanel";
 import { useVoiceClipOps } from "../voice/clip/useVoiceClipOps";
 import { VoiceClipOpsProvider } from "../voice/clip/voiceClipOpsContext";
-import { isBetaFeatureEnabled } from "../betaFeatures";
 import { studioStoryStore } from "../story/storyContext";
 import { SourcesPanel } from "../research/SourcesPanel";
 import { studioSourcesStore } from "../research/researchContext";
@@ -396,11 +395,9 @@ export function StudioRightPanels({
       <Dock.Panel id="sources">
         <SourcesPanel />
       </Dock.Panel>
-      {isBetaFeatureEnabled("voiceover") && (
-        <Dock.Panel id="voiceover">
-          <VoiceoverPanel projectId={projectId} />
-        </Dock.Panel>
-      )}
+      <Dock.Panel id="voiceover">
+        <VoiceoverPanel projectId={projectId} />
+      </Dock.Panel>
       <SettingsDialog agentStore={agentStore} />
       <DesignHost projectId={projectId} agentStore={agentStore} />
       <VoiceHost />

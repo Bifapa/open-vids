@@ -230,7 +230,7 @@ describe("project design snapshot block", () => {
 });
 
 describe("role instructions", () => {
-  it("tell the Director and the specialists that write compositions about the system and the link when the feature is on", () => {
+  it("tell the Director and the specialists that write compositions about the system and the link when the runtime has a design host", () => {
     expect(directorInstructions([], { design: true })).toContain(DESIGN_DIRECTOR);
     expect(DESIGN_DIRECTOR).toContain(
       "applying a system to existing compositions is a separate step the user approves",
@@ -245,7 +245,7 @@ describe("role instructions", () => {
     expect(DESIGN_SPECIALIST).toContain("before frame.md or design.md");
   });
 
-  it("say nothing about design systems when the feature is off", () => {
+  it("say nothing about design systems without a design host", () => {
     for (const options of [undefined, { design: false }]) {
       expect(directorInstructions([], options)).not.toContain("Design systems:");
       expect(directorInstructions([], options)).not.toContain("save_design_system");

@@ -1,8 +1,8 @@
-/* Projects page — the project tab strip (beta feature `projectTabs`). The shell keeps one webview per open project
+/* Projects page — the project tab strip. The shell keeps one webview per open project
    plus this page; its home server lists them at GET /api/tabs and this page draws the strip under the titlebar:
    a non-closable "Projects" tab (this page, always the selected one: the page is only visible while it is the
-   active tab), one tab per open project, and a trailing + that comes back here. Nothing is drawn, fetched or
-   listened to unless OV.betaFeatures(); with no project tab open the page looks exactly as it does without tabs.
+   active tab), one tab per open project, and a trailing + that comes back here. With no project tab open nothing
+   is drawn: the page looks like the window's only content.
    Global: window.OVTabs — home.js reads the tab state (per-project opening, the "Open" mark on cards). */
 (function () {
   "use strict";
@@ -12,8 +12,9 @@
   /* Safety net under the shell's `openvids-tabs-changed` push: one re-read every 10 s while the page is visible. */
   const POLL_MS = 10000;
 
-  /* The last answer of GET /api/tabs: { enabled, tabs: [{ key, name, state: "open" | "opening" }] }. */
-  let state = { enabled: false, tabs: [] };
+  /* The last answer of GET /api/tabs ({ active, limit, tabs }) reduced to what the page draws:
+     { tabs: [{ key, name, state: "open" | "opening" }] }. */
+  let state = { tabs: [] };
   let signature = "";
   let seq = 0;
   /* Keys whose close request is in flight (the shell may be asking the user in a native dialog). */
@@ -26,10 +27,9 @@
     list = null;
   const listeners = new Set();
 
-  /* The wire shape, checked: anything else counts as "tabs off". */
+  /* The wire shape, checked: anything else counts as "no tabs yet". */
   function parseTabs(data) {
-    if (!data || typeof data !== "object" || data.enabled !== true)
-      return { enabled: false, tabs: [] };
+    if (!data || typeof data !== "object") return { tabs: [] };
     const tabs = [];
     for (const t of Array.isArray(data.tabs) ? data.tabs : []) {
       if (!t || typeof t.key !== "string" || !t.key) continue;
@@ -40,10 +40,9 @@
         state: t.state,
       });
     }
-    return { enabled: true, tabs };
+    return { tabs };
   }
-  const signatureOf = (s) =>
-    JSON.stringify([s.enabled, s.tabs.map((t) => [t.key, t.name, t.state])]);
+  const signatureOf = (s) => JSON.stringify(s.tabs.map((t) => [t.key, t.name, t.state]));
 
   function refresh() {
     const mine = ++seq;
@@ -73,7 +72,7 @@
 
   /* ---------- the strip ---------- */
   function paint() {
-    if (state.enabled && state.tabs.length) {
+    if (state.tabs.length) {
       mount();
       render();
     } else unmount();
@@ -288,35 +287,30 @@
   }
 
   /* ---------- API for home.js ---------- */
-  const ready = OV.betaFeatures() ? refresh() : Promise.resolve();
+  const ready = refresh();
   window.OVTabs = {
     /* Settles once the first read of /api/tabs has (also when it failed). */
     ready,
-    /* Tabs are on (beta build, desktop shell): opening a project no longer takes over the page. */
-    enabled: () => state.enabled,
-    keys: () => state.tabs.map((t) => t.key),
     /* "open" | "opening" | null for a project key (a recent's id). */
     stateOf(key) {
       const t = find(key);
       return t ? t.state : null;
     },
     refresh,
-    /* fn() runs after the tab list changed (enabled flag, a tab added, removed, renamed or finished opening). */
+    /* fn() runs after the tab list changed (a tab added, removed, renamed or finished opening). */
     subscribe(fn) {
       listeners.add(fn);
       return () => listeners.delete(fn);
     },
   };
 
-  if (OV.betaFeatures()) {
-    window.addEventListener("openvids-tabs-changed", refresh);
-    document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "visible") refresh();
-    });
-    window.addEventListener("focus", refresh);
-    setInterval(() => {
-      if (document.visibilityState === "visible") refresh();
-    }, POLL_MS);
-    window.addEventListener("ov-language", render);
-  }
+  window.addEventListener("openvids-tabs-changed", refresh);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") refresh();
+  });
+  window.addEventListener("focus", refresh);
+  setInterval(() => {
+    if (document.visibilityState === "visible") refresh();
+  }, POLL_MS);
+  window.addEventListener("ov-language", render);
 })();

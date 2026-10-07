@@ -15,11 +15,10 @@ reactActEnv.IS_REACT_ACT_ENVIRONMENT = true;
 const HOME = "http://127.0.0.1:57035";
 const OWN = "9f2c0a41b7d3e8c5";
 const OTHER = "0123456789abcdef";
-const ENABLED_URL = `/?openvidsHome=${encodeURIComponent(HOME)}&openvidsChannel=beta&openvidsTab=${OWN}`;
+const ENABLED_URL = `/?openvidsHome=${encodeURIComponent(HOME)}&openvidsTab=${OWN}`;
 
 function tabsAnswer(...names: string[]): TabsSnapshot {
   return {
-    enabled: true,
     active: "home",
     limit: 6,
     tabs: names.map((name, index) => ({
@@ -139,17 +138,13 @@ afterEach(() => {
 
 describe("useProjectTabs gating", () => {
   it.each([
-    ["the beta flag", `/?openvidsHome=${encodeURIComponent(HOME)}&openvidsTab=${OWN}`],
-    ["a home origin", `/?openvidsChannel=beta&openvidsTab=${OWN}`],
+    ["a home origin", `/?openvidsTab=${OWN}`],
     [
       "a valid home origin",
-      `/?openvidsHome=${encodeURIComponent("http://evil.example:80")}&openvidsChannel=beta&openvidsTab=${OWN}`,
+      `/?openvidsHome=${encodeURIComponent("http://evil.example:80")}&openvidsTab=${OWN}`,
     ],
-    ["a tab key", `/?openvidsHome=${encodeURIComponent(HOME)}&openvidsChannel=beta`],
-    [
-      "a well-formed tab key",
-      `/?openvidsHome=${encodeURIComponent(HOME)}&openvidsChannel=beta&openvidsTab=home`,
-    ],
+    ["a tab key", `/?openvidsHome=${encodeURIComponent(HOME)}`],
+    ["a well-formed tab key", `/?openvidsHome=${encodeURIComponent(HOME)}&openvidsTab=home`],
   ])("draws nothing and asks the shell nothing without %s", async (_missing, url) => {
     await mount(url);
     await pushFromShell();
@@ -171,18 +166,18 @@ describe("useProjectTabs gating", () => {
     expect(home.requests).toEqual(["GET /api/tabs"]);
   });
 
-  it("is null when the shell says tabs are disabled, and again if it turns them off later", async () => {
-    home.tabs = { enabled: false };
+  it("offers an empty list while the shell has published nothing, and keeps the last list on a malformed answer", async () => {
+    home.tabs = { active: "home", limit: 6, tabs: [] };
     await mount();
-    expect(seen.latest).toBeNull();
+    expect(seen.latest?.snapshot.tabs).toEqual([]);
 
     home.tabs = tabsAnswer("Alpha");
     await pushFromShell();
     expect(seen.latest?.snapshot.tabs).toHaveLength(1);
 
-    home.tabs = { enabled: false };
+    home.tabs = { active: "home" };
     await pushFromShell();
-    expect(seen.latest).toBeNull();
+    expect(seen.latest?.snapshot.tabs).toHaveLength(1);
   });
 });
 
@@ -273,7 +268,7 @@ describe("useProjectTabs refetching", () => {
 
   it("keeps the strip it has when a read fails or answers nonsense", async () => {
     await mount();
-    home.tabs = { enabled: true, tabs: "nope" };
+    home.tabs = { active: "home", limit: 6, tabs: "nope" };
     await pushFromShell();
     expect(seen.latest?.snapshot).toEqual(tabsAnswer("Alpha", "Beta"));
 

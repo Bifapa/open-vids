@@ -188,7 +188,7 @@ describe("design action turns", () => {
     }
   });
 
-  it("has no design tools, role text, snapshot block or inventory line without a design host (the beta flag off)", async () => {
+  it("has no design tools, role text, snapshot block or inventory line without a design host", async () => {
     const fixture = await createRuntimeFixture({ design: undefined });
     try {
       const chat = await fixture.chats.create({}, ["editor", "motion"]);

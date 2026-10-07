@@ -11,6 +11,9 @@ It began as a snapshot of [HyperFrames](https://github.com/heygen-com/hyperframe
 - **Edit by chat.** A Director agent plans the work and hands it to specialists (Editor, Vision, Motion Designer, Research, Audio). Their edits land in the project files, so the timeline and preview update while they work.
 - **Long recordings.** Transcription with word timestamps, speaker detection, pauses, shots and retakes are analysed locally and reused across turns to build a rough cut.
 - **Story mode.** Lay the video out as a graph of sections, review it with AI, and build or rebuild the affected parts of the timeline.
+- **Voiceover.** Narration from your own text-to-speech key (Gemini, OpenAI, OpenRouter, ElevenLabs or a server of your own; the lines you generate are sent to that provider): pick a voice, hear a pilot line first, then place the takes, duck the music and caption them from the voice. Story chapters can be narrated.
+- **Design systems.** Save a project's look (colors, fonts, logo, motion) from scratch, from a project, a video or a website, and apply it to any project.
+- **Several projects at once.** Projects open as tabs in one window; fork a project from its tab or its card, and attach other projects to a chat with `#` to reuse their material.
 - **Research with licenses.** Agents can find and import outside material from trusted sources, and every import keeps its origin, author and license.
 - **Render QA.** After a turn the result is rendered and checked for black or frozen picture, audio holes, layout problems and wrong footage, and the agents correct what they find.
 - **One prompt, one checkpoint.** Every turn can be reverted as a whole.

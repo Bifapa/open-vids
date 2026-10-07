@@ -128,10 +128,10 @@ impl StudioServer {
 /// Windows without the system frame it also carries `openvidsFrame=custom`
 /// (or `=system` under the `OPENVIDS_SYSTEM_FRAME=1` fallback), so the Studio
 /// header knows which titlebar chrome to draw; on macOS the parameter is
-/// absent and the header keeps its traffic-light inset. With beta features on
+/// absent and the header keeps its traffic-light inset. On a beta build
 /// (`channel::beta_features_enabled`) it carries `openvidsChannel=beta`;
-/// stable builds omit it. With project tabs the project's tab key follows as
-/// `openvidsTab` (the strip draws that tab as the selected one). A query
+/// stable builds omit it. The project's tab key follows as `openvidsTab` (the
+/// strip draws that tab as the selected one). A query
 /// survives View \> Reload (it outlives hash rewrites) and the prod Hono
 /// server ignores it via its SPA fallback.
 #[allow(clippy::too_many_arguments)]
@@ -144,7 +144,7 @@ pub fn studio_url(
     workspace: Option<&str>,
     frame: &str,
     beta: bool,
-    tab: Option<&str>,
+    tab: &str,
 ) -> String {
     let mut query = format!(
         "openvidsHome={}&openvidsTheme={}&openvidsLanguage={}",
@@ -163,9 +163,7 @@ pub fn studio_url(
     if beta {
         query.push_str("&openvidsChannel=beta");
     }
-    if let Some(tab) = tab {
-        query.push_str(&format!("&openvidsTab={}", urlencode(tab)));
-    }
+    query.push_str(&format!("&openvidsTab={}", urlencode(tab)));
     format!("{studio_origin}/?{query}#project/{}", urlencode(project_id))
 }
 

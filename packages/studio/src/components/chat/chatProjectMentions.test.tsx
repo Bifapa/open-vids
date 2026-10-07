@@ -50,7 +50,6 @@ const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
 let mounted: Mounted | undefined;
 
 beforeEach(() => {
-  window.history.replaceState(null, "", "/?openvidsChannel=beta");
   server.projects = async () => json({ projects: PROJECTS });
   server.summary = async () => json(PROMO_SUMMARY);
   fetchMock.mockClear();
@@ -399,18 +398,6 @@ describe("# that is not a project mention", () => {
     expect(fetchMock.mock.calls.filter(([url]) => String(url).endsWith("/projects"))).toHaveLength(
       2,
     );
-  });
-
-  it("does nothing at all outside the beta channel", async () => {
-    window.history.replaceState(null, "", "/");
-    const { host, field, client } = await open();
-    await typeText(field, "#");
-    await settle();
-
-    expect(fetchMock).not.toHaveBeenCalled();
-    expect(host.querySelector('[role="listbox"]')).toBeNull();
-    await pressKey(field, "Enter");
-    expect(client.startTurn).toHaveBeenCalledWith("c1", expect.objectContaining({ prompt: "#" }));
   });
 
   it("leaves the @ popup as it was", async () => {

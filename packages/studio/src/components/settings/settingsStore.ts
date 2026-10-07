@@ -1,5 +1,4 @@
 import { create } from "zustand";
-import { isBetaFeatureEnabled, type BetaFeatureId } from "../../betaFeatures";
 
 /** The Settings window's sections, in sidebar order. */
 export const SETTINGS_SECTIONS = [
@@ -13,19 +12,6 @@ export const SETTINGS_SECTIONS = [
   "execution",
 ] as const;
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
-
-/** Sections that exist only while a beta feature is on (the sidebar, the arrow keys and `openSettings` skip them). */
-const BETA_SECTIONS: Partial<Record<SettingsSection, BetaFeatureId>> = { voice: "voiceover" };
-
-export function isSettingsSectionAvailable(section: SettingsSection): boolean {
-  const feature = BETA_SECTIONS[section];
-  return feature === undefined || isBetaFeatureEnabled(feature);
-}
-
-/** The sections the sidebar lists now, in order. */
-export function availableSettingsSections(): SettingsSection[] {
-  return SETTINGS_SECTIONS.filter(isSettingsSectionAvailable);
-}
 
 interface SettingsDialogState {
   open: boolean;
@@ -54,14 +40,14 @@ export const useSettingsDialog = create<SettingsDialogState>((set) => ({
 }));
 
 /**
- * Opens Settings, on `section` when given (otherwise where the user left it). A beta section that is not on
- * leaves the window where it was. Focus returns to the element focused at the time of the call when it closes.
+ * Opens Settings, on `section` when given (otherwise where the user left it). Focus returns to the element
+ * focused at the time of the call when it closes.
  */
 export function openSettings(section?: SettingsSection): void {
   const active = typeof document === "undefined" ? null : document.activeElement;
   useSettingsDialog.setState((state) => ({
     open: true,
-    section: section !== undefined && isSettingsSectionAvailable(section) ? section : state.section,
+    section: section ?? state.section,
     returnFocus: active instanceof HTMLElement ? active : null,
   }));
 }

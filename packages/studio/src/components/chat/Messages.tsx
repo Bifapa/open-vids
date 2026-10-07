@@ -27,7 +27,6 @@ import { isPermissionPart } from "../../agent/permissionGuards";
 import { isQuestionPart } from "../../agent/questionGuards";
 import { isStoryOfferPart } from "../../agent/storyOfferGuards";
 import { isVoicePilotPart, isVoiceSetupPart } from "../../agent/voiceChatGuards";
-import { isBetaFeatureEnabled } from "../../betaFeatures";
 import { cn } from "../ui/cn";
 import { Badge } from "../ui/Status";
 import { ActivityRow } from "./ActivityRow";
@@ -375,14 +374,9 @@ export function AssistantBlock({
           ) : isStoryOfferPart(group.part) ? (
             <StoryOfferCard turnId={message.turnId} offer={group.part.offer} />
           ) : isVoiceSetupPart(group.part) ? (
-            // Beta: with the flag off there is no voice window to open, so the card is not drawn.
-            isBetaFeatureEnabled("voiceover") ? (
-              <VoiceSetupCard turnId={message.turnId} setup={group.part.setup} />
-            ) : null
+            <VoiceSetupCard turnId={message.turnId} setup={group.part.setup} />
           ) : isVoicePilotPart(group.part) ? (
-            isBetaFeatureEnabled("voiceover") ? (
-              <VoicePilotCard turnId={message.turnId} pilot={group.part.pilot} />
-            ) : null
+            <VoicePilotCard turnId={message.turnId} pilot={group.part.pilot} />
           ) : null}
         </Fragment>
       ))}

@@ -9,7 +9,6 @@ import { directorInstructions, specialistInstructions } from "../agents/roles.js
 import { buildHostTools } from "../agents/tools.js";
 import { changesProject } from "../intent.js";
 import { qaPhaseRefusal } from "../qa/phase.js";
-import { voiceFeatureEnabled } from "./feature.js";
 import { VOICE_TOOL_NAMES, buildVoiceTools, isVoiceToolName, voiceToolsFor } from "./tools.js";
 
 const VOICE_TOOLS = Object.values<string>(VOICE_TOOL_NAMES);
@@ -179,14 +178,5 @@ describe("voice prompt text", () => {
       "Voiceover: when your task asks for narration",
     );
     expect(directorInstructions(withoutAudio)).not.toContain("generate_voiceover");
-  });
-});
-
-describe("the voice feature gate", () => {
-  it("is on only for an explicit OPENVIDS_BETA_FEATURES=1", () => {
-    expect(voiceFeatureEnabled({ OPENVIDS_BETA_FEATURES: "1" })).toBe(true);
-    expect(voiceFeatureEnabled({ OPENVIDS_BETA_FEATURES: "0" })).toBe(false);
-    expect(voiceFeatureEnabled({ OPENVIDS_BETA_FEATURES: "true" })).toBe(false);
-    expect(voiceFeatureEnabled({})).toBe(false);
   });
 });

@@ -24,8 +24,7 @@
 //! keeps this server's origin, so its font requests are same-origin and need no CORS. No answer carries an
 //! `Access-Control-Allow-*` header, and a request from another origin is refused by `home_auth::origin_allowed`.
 //!
-//! The routes are served regardless of the release channel; only the UI that reaches them is gated by the beta
-//! flag. Errors are `{ "error": { "code", "message" } }` with the status of `DesignError::status`.
+//! Errors are `{ "error": { "code", "message" } }` with the status of `DesignError::status`.
 
 use std::net::TcpStream;
 

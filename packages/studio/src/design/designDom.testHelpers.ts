@@ -73,8 +73,3 @@ export function byText<T extends Element>(
     null
   );
 }
-
-/** The beta channel the desktop sets in Studio's address; `visitStudio("")` is a plain browser. */
-export function visitStudio(channel: "beta" | ""): void {
-  window.history.replaceState(null, "", channel ? `/?openvidsChannel=${channel}` : "/");
-}

@@ -8,11 +8,9 @@ import { HttpEditingHost } from "./editing/host.http.js";
 import { HttpFramesHost } from "./editing/frames.http.js";
 import { HttpCrossProjectHost } from "./crossProject/host.http.js";
 import { HttpStoryHost } from "./story/host.http.js";
-import { designFeatureEnabled } from "./design/feature.js";
 import { HttpDesignHost } from "./design/host.http.js";
 import { HttpResearchHost } from "./research/host.http.js";
 import { HttpQaHost } from "./qa/host.http.js";
-import { voiceFeatureEnabled } from "./voice/feature.js";
 import { HttpVoiceHost } from "./voice/host.http.js";
 import { createShutdown, watchParent } from "./lifecycle.js";
 import { createRuntimeApp } from "./server.js";
@@ -36,10 +34,8 @@ const app = createRuntimeApp({
   frames: (scope) => new HttpFramesHost(scope),
   crossProject: (scope) => new HttpCrossProjectHost(scope),
   story: (scope) => new HttpStoryHost(scope),
-  // Design Systems is a beta feature: without OPENVIDS_BETA_FEATURES=1 the runtime has no design host at all.
-  ...(designFeatureEnabled(process.env) && { design: (scope) => new HttpDesignHost(scope) }),
-  // Voiceover is a beta feature too (its connectors are unverified against live provider APIs): same gate.
-  ...(voiceFeatureEnabled(process.env) && { voice: (scope) => new HttpVoiceHost(scope) }),
+  design: (scope) => new HttpDesignHost(scope),
+  voice: (scope) => new HttpVoiceHost(scope),
   research: (scope) => new HttpResearchHost(scope),
   qa: (scope) => new HttpQaHost(scope),
   settings,

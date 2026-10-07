@@ -53,9 +53,7 @@ could be a noun). Keys are listed by area; a key that is not here reads as it sa
 - `home.toast.relinked` — <path> wraps the folder path (monospace).
 - `home.toast.missing` — <path> wraps the folder path (monospace). The toast has a "Locate…" button.
 - `home.trash.body` — Followed by the folder path on its own line.
-- `home.opening.text` — <name> emphasises the project name.
-- `home.opening.project` — Stands in for the project name while a folder is being opened ("Opening “project”…").
-- `home.opening.lastProject` — Stands in for the project name when the last project is reopened at launch.
+- `home.opening.project` — Stands in for the project name when a project failed to open and its name is not known.
 - `home.settings.title` — Title of the Settings frame.
 - `home.new.title` — Dialog title.
 - `home.new.name` — Field label: the new project's folder name.
@@ -1242,7 +1240,6 @@ could be a noun). Keys are listed by area; a key that is not here reads as it sa
 - `home.error.navigate_failed` — The window could not be pointed at the project; {detail} is the system's own text.
 - `home.error.not_a_project` — {name} is the folder the user picked; the page shows it in bold.
 - `home.error.nothing_to_restore` — Undo of "Remove from Recent" found no removed entry.
-- `home.error.project_in_use` — "Show All Projects" is a File menu item (menu.file.showAllProjects).
 - `home.error.project_register_failed` — Development builds only.
 - `home.error.route_not_found` — Internal error: the page asked for something the app does not have.
 - `home.error.runtime_not_bundled` — Developer-facing: a build without its bundled runtime.
@@ -1369,7 +1366,7 @@ could be a noun). Keys are listed by area; a key that is not here reads as it sa
 
 ## studio-tabs
 
-- `shell.tabs.label` — Accessible name of the project tab strip under the Studio titlebar (beta project tabs); the strip lists the projects open in this window.
+- `shell.tabs.label` — Accessible name of the project tab strip under the Studio titlebar; the strip lists the projects open in this window.
 - `shell.tabs.projects` — Label of the first, non-closable tab: it brings back the Projects page.
 - `shell.tabs.close` — Tooltip and accessible name of the × on a project tab; {name} is the project's name.
 - `shell.tabs.new` — Tooltip and accessible name of the + after the last tab: it shows the Projects page to pick another project.
@@ -1377,7 +1374,7 @@ could be a noun). Keys are listed by area; a key that is not here reads as it sa
 
 ## home-tabs
 
-- `home.tabs.label` — Projects page tab strip (project tabs, beta): accessible name of the tab list.
+- `home.tabs.label` — Projects page tab strip (project tabs): accessible name of the tab list.
 - `home.tabs.projects` — Projects page tab strip: label of the first, non-closable tab that is the Projects page itself.
 - `home.tabs.close` — Projects page tab strip: tooltip and accessible name of a project tab's × button. {name} is the project name.
 - `home.tabs.add` — Projects page tab strip: tooltip and accessible name of the trailing + button that returns to the Projects page.
@@ -1452,7 +1449,7 @@ could be a noun). Keys are listed by area; a key that is not here reads as it sa
 
 ## design-studio
 
-- `studio.design.button` — Tooltip and accessible name of the titlebar icon button (beta) that opens the design-system popover. Named "design system" in full because Studio's right-hand tab "Design" is the element inspector.
+- `studio.design.button` — Tooltip and accessible name of the titlebar icon button that opens the design-system popover. Named "design system" in full because Studio's right-hand tab "Design" is the element inspector.
 - `studio.design.button.update` — Same button while the library holds a newer version of the system attached to the project (a dot is drawn on the icon).
 - `studio.design.title` — Heading and accessible name of the popover.
 - `studio.design.loading` — Shown while the project's attached design system is being read.
@@ -1569,7 +1566,7 @@ could be a noun). Keys are listed by area; a key that is not here reads as it sa
 
 ## home-voice
 
-- `settings.section.voice` — Settings section (nav item, window title and page heading): a voice-over (закадровый голос) made by text-to-speech. Beta feature. Same text as the Studio key of the same name.
+- `settings.section.voice` — Settings section (nav item, window title and page heading): a voice-over (закадровый голос) made by text-to-speech. Same text as the Studio key of the same name.
 - `settings.voice.meta` — Counter in the heading of the provider list: how many providers are set up and can speak now, of all providers.
 - `settings.voice.badge.needsSetup` — Badge of the custom server: its address or model is missing.
 - `settings.voice.field.baseUrl.hint` — The OpenAI speech API is the text-to-speech interface of OpenAI; many local servers copy it.
@@ -1591,8 +1588,8 @@ could be a noun). Keys are listed by area; a key that is not here reads as it sa
 
 ## studio-voiceover
 
-- `shell.dock.panel.voiceover` — Name of the dock tab (Window menu and tab strip) of the project’s voiceover script (beta).
-- `media.nav.group.voice` — Heading of the Media library nav group that holds the generated-voiceover collection (beta).
+- `shell.dock.panel.voiceover` — Name of the dock tab (Window menu and tab strip) of the project’s voiceover script.
+- `media.nav.group.voice` — Heading of the Media library nav group that holds the generated-voiceover collection.
 - `media.collection.voice` — Media library collection of the generated voiceover audio files (assets/voice).
 - `voice.line.speakerText` — Label of the field holding what the narrator reads, tags included (as opposed to the caption text).
 - `voice.line.caption` — Label of the field holding the line’s source text, which captions show.

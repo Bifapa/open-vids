@@ -24,7 +24,6 @@ import {
   projectSlugs,
   toggleProjectPart,
 } from "../../agent/projectMentions";
-import { isBetaFeatureEnabled } from "../../betaFeatures";
 import { useStudioShellContextOptional } from "../../contexts/StudioContext";
 import { isImeKeyEvent } from "../../utils/imeKey";
 import type { AssetMentions } from "./AssetMentionMenu";
@@ -44,7 +43,7 @@ interface PartsStep {
 }
 
 /**
- * `#project` in the prompt (a beta feature): while the caret is inside a `#` token the other projects are offered;
+ * `#project` in the prompt: while the caret is inside a `#` token the other projects are offered;
  * picking one opens a checklist of its parts (renders, music, …), and confirming writes `#<slug> ` into the draft
  * and attaches ONE project chip. The list is fetched when the first `#` is typed and again every time a `#` opens
  * the popup anew (the cached one shows meanwhile). The popup only exists while there is something to show: while
@@ -67,8 +66,7 @@ export function useProjectMentions({
 }): AssetMentions {
   const listId = useId();
   const projectId = useStudioShellContextOptional()?.projectId;
-  const [betaEnabled] = useState(() => isBetaFeatureEnabled("projectMentions"));
-  const enabled = betaEnabled && projectId !== undefined && projectId !== "";
+  const enabled = projectId !== undefined && projectId !== "";
   const draftKey = useAgentStore((state) => state.chatId ?? NEW_CHAT_DRAFT);
   const attachProject = useAgentStore((state) => state.attachProject);
 

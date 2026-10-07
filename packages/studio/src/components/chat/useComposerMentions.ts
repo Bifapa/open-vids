@@ -4,7 +4,7 @@ import { useProjectMentions } from "./useProjectMentions";
 
 /**
  * Every mention the composer completes, as one set of props for its textarea: `@` offers the project's files,
- * `#` (beta) the other projects. A token belongs to one trigger, so at most one popup is open at a time.
+ * `#` the other projects. A token belongs to one trigger, so at most one popup is open at a time.
  */
 export function useComposerMentions(options: {
   areaRef: RefObject<HTMLTextAreaElement | null>;

@@ -99,7 +99,7 @@ afterEach(() => {
 
 // The default Edit layout tabs [chat|compositions|assets|code|catalog] into one
 // group and [design|layers|renders|variables] into another; dockview shows
-// only the active tab's content per group. `slideshow`, `sources` and the beta `voiceover` are never
+// only the active tab's content per group. `slideshow`, `sources` and `voiceover` are never
 // part of the default build — StudioRightPanels opens the first when the file
 // is one, and Sources & Licenses opens on demand.
 const DEFAULT_OPEN = PANEL_IDS.filter(
@@ -134,26 +134,6 @@ describe("Dock on React 19", () => {
     const expected = DEFAULT_OPEN.filter((id) => id !== "renders");
     expect(Object.keys(stored?.panels ?? {}).sort()).toEqual([...expected].sort());
     expect(readStudioUiPreferences(undefined, "p2").dockLayout).toBeUndefined();
-  });
-
-  it("drops a beta panel from a stored layout when the feature is off, so no empty tab is restored", () => {
-    window.history.replaceState(null, "", "/?openvidsChannel=beta");
-    mount("p1");
-    act(() => useDockLayoutStore.getState().activatePanel("voiceover"));
-    act(() => {
-      vi.advanceTimersByTime(1000);
-    });
-    expect(
-      Object.keys(readStudioUiPreferences(undefined, "p1").dockLayout?.panels ?? {}),
-    ).toContain("voiceover");
-    act(() => root?.unmount());
-    document.body.innerHTML = "";
-
-    window.history.replaceState(null, "", "/");
-    const host = mount("p1");
-    expect(useDockLayoutStore.getState().openPanels.has("voiceover")).toBe(false);
-    expect(dockApi?.getPanel("voiceover")).toBeUndefined();
-    expect(host.querySelector('[data-testid="content-voiceover"]')).toBeNull();
   });
 
   it("closes a panel and reopens it from the store, becoming its group's visible tab", async () => {

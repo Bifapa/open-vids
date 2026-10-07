@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { isBetaFeatureEnabled } from "../betaFeatures";
 import { readOpenvidsHomeOrigin } from "../utils/openvidsHost";
 import {
   activateTab,
@@ -40,9 +39,8 @@ interface TabsGate {
   ownKey: string;
 }
 
-/** Everything the strip needs from the URL: the beta flag, a valid home origin and this page's tab key. */
+/** Everything the strip needs from the URL: a valid home origin and this page's tab key. */
 function readTabsGate(): TabsGate | null {
-  if (!isBetaFeatureEnabled("projectTabs")) return null;
   const homeOrigin = readOpenvidsHomeOrigin();
   const ownKey = readOpenvidsTabKey();
   return homeOrigin && ownKey ? { homeOrigin, ownKey } : null;
@@ -51,11 +49,11 @@ function readTabsGate(): TabsGate | null {
 const pageIsVisible = () => document.visibilityState === "visible";
 
 /**
- * The project tab strip's data (beta feature `projectTabs`), read from the shell's home server. Null
- * while the strip must draw nothing: the beta is off, the page is outside the desktop or has no tab key,
- * the shell has not answered yet, or it says tabs are disabled. The list is re-read when the shell pushes
- * `openvids-tabs-changed`, when the page becomes visible or focused, and every 10 s while visible (never
- * while hidden); a read never overlaps another, and a change that lands mid-read is read again after it.
+ * The project tab strip's data, read from the shell's home server. Null while the strip must draw nothing:
+ * the page is outside the desktop or has no tab key, or the shell has not answered yet. The list is re-read
+ * when the shell pushes `openvids-tabs-changed`, when the page becomes visible or focused, and every 10 s
+ * while visible (never while hidden); a read never overlaps another, and a change that lands mid-read is
+ * read again after it.
  */
 export function useProjectTabs(): ProjectTabs | null {
   const gate = useMemo(readTabsGate, []);
@@ -173,6 +171,6 @@ export function useProjectTabs(): ProjectTabs | null {
     [gate],
   );
 
-  if (!gate || !snapshot || !snapshot.enabled) return null;
+  if (!gate || !snapshot) return null;
   return { ownKey: gate.ownKey, snapshot, activate, close, closingKey, fork, forkingKey };
 }

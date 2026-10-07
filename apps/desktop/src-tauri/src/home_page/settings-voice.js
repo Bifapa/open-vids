@@ -1,4 +1,4 @@
-/* Settings → Voice (beta, only while OV.betaFeatures()): voiceover with the user's own speech provider. The shell only
+/* Settings → Voice: voiceover with the user's own speech provider. The shell only
    reads and writes files (home_voice.rs, the same files and routes Studio's server uses under /api/voice/*): provider
    settings and keys, and the saved voices (presets) with their sample audio. Trying a voice, checking a key and the
    voice catalog live in Studio.

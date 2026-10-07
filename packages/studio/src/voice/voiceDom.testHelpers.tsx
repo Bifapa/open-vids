@@ -80,11 +80,6 @@ export const byLabel = <T extends Element>(root: ParentNode, label: string) =>
 export const byTestId = <T extends Element>(root: ParentNode, id: string) =>
   root.querySelector<T>(`[data-testid="${id}"]`);
 
-/** The beta channel the desktop sets in Studio's address; `visitStudio("")` is a plain browser. */
-export function visitStudio(channel: "beta" | ""): void {
-  window.history.replaceState(null, "", channel ? `/?openvidsChannel=${channel}` : "/");
-}
-
 /** Mounts `element` on a fake voice service; returns the host, the fake and its store. */
 export function mountVoice(
   element: ReactElement,

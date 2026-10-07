@@ -1,4 +1,4 @@
-/* Design systems (beta): the dialogs of the Projects page's section (design.js) and the New Project picker.
+/* Design systems: the dialogs of the Projects page's section (design.js) and the New Project picker.
    view     — a large sheet: the system's own showcase (the token-free GET /design-files/:id/system.html) in a script-less
               sandbox="allow-same-origin" iframe beside the
               fonts with license / portability / "similar" markers and the counts. GET /api/design-systems/:id answers

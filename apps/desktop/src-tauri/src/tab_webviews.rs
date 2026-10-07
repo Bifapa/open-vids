@@ -1,5 +1,5 @@
 //! The window's webviews: the Projects page in the window's own webview
-//! (`main`), and with project tabs one child webview per open project, all the
+//! (`main`), and one child webview per open project (a tab), all the
 //! size of the window, one shown at a time.
 //!
 //! Tauri's `unstable` multiwebview feature is what makes a second webview in
@@ -29,8 +29,7 @@ pub fn main_window(app: &AppHandle) -> Option<Window> {
     app.get_window(MAIN)
 }
 
-/// The window's own webview: the Projects page (in single-project mode also
-/// the project's Studio, which the window navigates to).
+/// The window's own webview: the Projects page.
 pub fn main_webview(app: &AppHandle) -> Option<Webview> {
     app.get_webview(MAIN)
 }
@@ -126,8 +125,8 @@ pub fn create_child(app: &AppHandle, spec: ChildSpec) -> Result<Webview, CodedEr
             _ => true,
         })
         // The in-Studio back button is a plain navigation to the home origin.
-        // With tabs it must not leave the project: the Projects tab shows
-        // instead and this page stays where it is.
+        // It must not leave the project: the Projects tab shows instead and
+        // this page stays where it is.
         .on_navigation(move |url| {
             if super::normalize_origin(url) == home_origin {
                 let app = nav_app.clone();

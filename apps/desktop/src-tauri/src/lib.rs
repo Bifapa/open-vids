@@ -13,25 +13,26 @@
 //! That is the whole design. Loading the SPA from a `tauri://` asset instead
 //! would put the API on a different origin and break every `contentDocument`
 //! read; a `postMessage` bridge would be a second, parallel editing path. So
-//! the app runs the real server on 127.0.0.1 and navigates the window at it.
+//! the app runs the real server on 127.0.0.1 and points a webview at it: the
+//! Projects page in the window itself, every open project in a child webview
+//! of its own (a tab), each with its own sidecar and origin.
 //!
-//! ## Two modes, one webview
+//! ## Two modes
 //!
-//! * Development — the window loads Studio's Vite dev server. HMR, no sidecar,
+//! * Development — project tabs load Studio's Vite dev server. HMR, no sidecar,
 //!   no bundling. `apps/desktop/scripts/serve-studio-dev.mjs` is Tauri's
 //!   `beforeDevCommand`.
-//! * Production — the window loads the embedded Studio server run by the
-//!   bundled sidecar, which serves the prebuilt SPA *and* `/api` from one
-//!   loopback port. Before a project is chosen it shows the Projects home
-//!   screen, because the embedded server is single-project and cannot start
-//!   without one.
+//! * Production — each project tab loads the embedded Studio server run by
+//!   the bundled sidecar, which serves the prebuilt SPA *and* `/api` from one
+//!   loopback port. The embedded server is single-project, which is why every
+//!   open project has a sidecar of its own.
 //!
 //! ## The home screen
 //!
 //! Both modes start on a Projects home page served by `home::HomeServer`, a
 //! small loopback listener that lives for the whole app lifetime (never
-//! dropped on project open, so File > Show All Projects is a plain
-//! navigation back). It serves one self-contained document
+//! dropped on project open, so File > Show All Projects is a plain tab
+//! switch). It serves one self-contained document
 //! (`home.html`, token injected per launch) plus a JSON API for
 //! recents, folder picking (`rfd` in Rust), scaffolding, rename, remove and
 //! Trash. See `home_routes.rs` for the endpoint list and `home_auth.rs` for
@@ -107,7 +108,7 @@ mod voice_settings;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-use tauri::menu::{AboutMetadata, IsMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
+use tauri::menu::{AboutMetadata, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 
 use coded_error::CodedError;
@@ -115,7 +116,7 @@ use home::HomeServer;
 use home_routes::OpenPhase;
 use sidecar::StudioServer;
 use tab_webviews::{main_webview, main_window};
-use tabs::{OpenProject, Tabs};
+use tabs::Tabs;
 
 /// The files that make up the bundled runtime. A directory holding all of them
 /// is the payload root, wherever the app is installed. The bun entry follows
@@ -140,15 +141,10 @@ enum Mode {
 /// why that is a best-effort backstop rather than the guarantee, and
 /// `sidecar/serve.mjs` for what actually enforces it.
 /// The home server is also owned here and never dropped until exit: it serves
-/// the Projects page in both modes, so "Show All Projects" always has
-/// somewhere to navigate back to.
+/// the Projects page, which the main webview never leaves, so "Show All
+/// Projects" always has somewhere to go back to.
 struct AppState {
     mode: Mode,
-    /// Project tabs (the `projectTabs` beta feature): several projects open in
-    /// one window, each its own webview and sidecar. Off, the window shows one
-    /// project at a time and opening another replaces it, as it always did.
-    /// Fixed at start, so the menu, the pages and this state never disagree.
-    multi: bool,
     tabs: Tabs<StudioServer>,
     home: HomeServer,
     home_origin: String,
@@ -162,29 +158,9 @@ impl AppState {
         self.tabs.origins()
     }
 
-    /// Whether the window shows the Projects page (nothing but it can be
-    /// shown with tabs on and the Projects tab active).
+    /// Whether the window shows the Projects page (the Projects tab is active).
     fn tabs_show_home(&self) -> bool {
-        self.multi && self.tabs.active().is_none()
-    }
-
-    /// A navigation of the main webview to `origin` (`normalize_origin`),
-    /// single-project mode: back to the Projects page closes the project the
-    /// window really showed (see `tabs::OpenGate`) and returns it for teardown
-    /// without the lock. With tabs the main webview never leaves the Projects page.
-    fn navigated(&mut self, origin: &str) -> Vec<OpenProject<StudioServer>> {
-        if self.multi {
-            return Vec::new();
-        }
-        if origin == self.home_origin {
-            let closed = self.tabs.home_navigated();
-            tab_actions::publish_state(self);
-            return closed;
-        }
-        if let Some(key) = self.tabs.key_of_origin(origin).map(str::to_string) {
-            self.tabs.studio_navigated(&key);
-        }
-        Vec::new()
+        self.tabs.active().is_none()
     }
 }
 
@@ -376,24 +352,15 @@ fn build_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     )?;
     let view = Submenu::with_items(app, i18n::t("menu.view.title"), true, &[&reload])?;
 
-    // With project tabs (beta) ⌘W closes the project tab on screen (the window
-    // on the Projects page) and Ctrl+Tab walks the tabs; without them the menu
-    // is exactly what it always was.
-    let tabs = channel::beta_features_enabled();
-    let close_item: Box<dyn IsMenuItem<tauri::Wry>> = if tabs {
-        Box::new(MenuItem::with_id(
-            app,
-            "close_tab",
-            i18n::t("menu.file.closeTab"),
-            true,
-            Some("CmdOrCtrl+W"),
-        )?)
-    } else {
-        Box::new(PredefinedMenuItem::close_window(
-            app,
-            Some(&i18n::t("menu.file.closeWindow")),
-        )?)
-    };
+    // ⌘W closes the project tab on screen (the window on the Projects page)
+    // and Ctrl+Tab walks the tabs.
+    let close_item = MenuItem::with_id(
+        app,
+        "close_tab",
+        i18n::t("menu.file.closeTab"),
+        true,
+        Some("CmdOrCtrl+W"),
+    )?;
     let next_tab = MenuItem::with_id(app, "next_tab", i18n::t("menu.window.nextTab"), true, Some("Ctrl+Tab"))?;
     let prev_tab = MenuItem::with_id(
         app,
@@ -406,26 +373,12 @@ fn build_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     let separator = PredefinedMenuItem::separator(app)?;
     let separator_tabs = PredefinedMenuItem::separator(app)?;
     let full_screen = PredefinedMenuItem::fullscreen(app, Some(&i18n::t("menu.window.fullScreen")))?;
-    let window = if tabs {
-        Submenu::with_items(
-            app,
-            i18n::t("menu.window.title"),
-            true,
-            &[&minimize, &separator, &full_screen, &separator_tabs, &next_tab, &prev_tab],
-        )?
-    } else {
-        Submenu::with_items(
-            app,
-            i18n::t("menu.window.title"),
-            true,
-            &[
-                &minimize,
-                &separator,
-                &full_screen,
-                &PredefinedMenuItem::close_window(app, Some(&i18n::t("menu.file.closeWindow")))?,
-            ],
-        )?
-    };
+    let window = Submenu::with_items(
+        app,
+        i18n::t("menu.window.title"),
+        true,
+        &[&minimize, &separator, &full_screen, &separator_tabs, &next_tab, &prev_tab],
+    )?;
 
     // Help › Welcome to OpenVids… reopens the first-run onboarding (see
     // `show_onboarding`). The id is what `set_help_menu` finds again in `setup`.
@@ -457,7 +410,7 @@ fn build_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
                 &open,
                 &home,
                 &PredefinedMenuItem::separator(app)?,
-                &*close_item,
+                &close_item,
                 &PredefinedMenuItem::quit(app, Some(&i18n::t("menu.app.quit")))?,
             ],
         )?;
@@ -523,7 +476,7 @@ fn build_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
                 &home,
                 &settings,
                 &PredefinedMenuItem::separator(app)?,
-                &*close_item,
+                &close_item,
                 &PredefinedMenuItem::quit(app, Some(&i18n::t("menu.app.quit")))?,
             ],
         )?;
@@ -605,7 +558,7 @@ pub(crate) fn menu_action(app: &tauri::AppHandle, id: &str) -> bool {
                 return false;
             }
         }
-        // Project tabs (beta): the native menu and its shortcuts only.
+        // Project tabs: the native menu and its shortcuts only.
         "close_tab" => tab_actions::close_active(app),
         "next_tab" => tab_actions::cycle(app, true),
         "prev_tab" => tab_actions::cycle(app, false),
@@ -696,8 +649,8 @@ pub fn run() {
             }
 
             // The home server starts first: the window always opens on it,
-            // and it outlives every project so "Show All Projects" is a
-            // plain navigation back. A project named at launch
+            // and it outlives every project (the Projects tab stays loaded
+            // under the project tabs). A project named at launch
             // (OPENVIDS_PROJECT / bare arg) opens right after, off the
             // setup path so a slow sidecar never freezes the app.
             let (data_root, recents_path, thumbs_dir) = app_dirs(&handle);
@@ -822,7 +775,6 @@ pub fn run() {
                 );
             }
 
-            let multi = channel::beta_features_enabled();
             let mut state = if dev {
                 let origin = app
                     .config()
@@ -833,7 +785,6 @@ pub fn run() {
                     .ok_or("devUrl is not configured")?;
                 AppState {
                     mode: Mode::Dev,
-                    multi,
                     tabs: Tabs::default(),
                     home,
                     home_origin: String::new(),
@@ -843,7 +794,6 @@ pub fn run() {
             } else {
                 AppState {
                     mode: Mode::Prod,
-                    multi,
                     tabs: Tabs::default(),
                     home,
                     home_origin: String::new(),
@@ -856,7 +806,7 @@ pub fn run() {
             report::init(&handle, &state.home_origin);
             let initial_url = state.home_origin.clone();
 
-            let _ = APP_FOR_HOME_CLEANUP.set(Mutex::new(Some(handle.clone())));
+            let _ = APP_HANDLE.set(Mutex::new(Some(handle.clone())));
 
             app.manage(Mutex::new(state));
 
@@ -974,17 +924,6 @@ pub fn run() {
                 // has to stay off or media import silently stops working.
                 .disable_drag_drop_handler()
                 .devtools(dev)
-                // The in-Studio back button is a plain document navigation to
-                // the home origin (the webview has no IPC by design). Allow it
-                // and run the same cleanup the Show All Projects menu runs:
-                // forget the project, idle the open phase, reap the sidecar.
-                // The closure only parses the URL, locks the mutex briefly and
-                // spawns a worker: the sidecar teardown (up to a 3 s SIGTERM
-                // grace in `sidecar::terminate`) happens on that thread, never
-                // on the navigation callback. Only a navigation away from the
-                // Studio the window showed closes it: a reload of the Projects
-                // page, or one that lands while an open is still running, does
-                // not (`OpenGate`).
                 // `target="_blank"` links and `window.open` from Studio or
                 // the home page (source homepages, license links, provider
                 // sign-in pages, chat Markdown, the render-QA row): never a
@@ -993,7 +932,7 @@ pub fn run() {
                 // default apps, a render's own link to the Studio server's
                 // open-in-player route, anything else is dropped.
                 .on_new_window(|url, _features| {
-                    let studio = app_handle_for_home_cleanup().map(|app| studio_origins(&app)).unwrap_or_default();
+                    let studio = stashed_app_handle().map(|app| studio_origins(&app)).unwrap_or_default();
                     shell_links::run_link_action(shell_links::classify_link(url.as_str(), &studio));
                     tauri::webview::NewWindowResponse::Deny
                 })
@@ -1011,25 +950,15 @@ pub fn run() {
                     }
                     _ => true,
                 })
-                // No top-level allow-list here, deliberately: wry 0.57's
-                // navigation handler receives only the URL string, and on
-                // macOS (WKNavigationDelegate) it fires for subframe loads as
-                // well as the main frame, with no way to tell them apart. A
-                // policy that denies unknown origins would also cancel every
-                // external iframe a composition embeds. The top-level check
-                // lives in the `on_page_load` hook above, which fires for the
-                // main frame only. The webview holds no
-                // IPC capability beyond window dragging, so a navigated-away
-                // window cannot reach the shell.
-                .on_navigation(move |url| {
-                    let closed = app_handle_for_home_cleanup()
-                        .map(|app| note_main_navigation(&app, url))
-                        .unwrap_or_default();
-                    if !closed.is_empty() {
-                        std::thread::spawn(move || drop(closed));
-                    }
-                    true
-                })
+                // No navigation hook, deliberately: wry 0.57's navigation
+                // handler receives only the URL string, and on macOS
+                // (WKNavigationDelegate) it fires for subframe loads as well as
+                // the main frame, with no way to tell them apart. A policy that
+                // denies unknown origins would also cancel every external
+                // iframe a composition embeds. The top-level check lives in the
+                // `on_page_load` hook above, which fires for the main frame
+                // only. The webview holds no IPC capability beyond window
+                // dragging, so a navigated-away window cannot reach the shell.
                 .build()?;
             paint_window_background(&handle);
             // Windows custom frame: the app menu stays attached (its Ctrl+
@@ -1143,27 +1072,19 @@ fn stop_owned_processes(app: &tauri::AppHandle) {
     ffmpeg_install::shutdown();
 }
 
-/// Before an update replaces the bundle: close every open project (the window
-/// goes back to the Projects page, so an install that fails leaves a working
-/// window), then stop everything the app owns and wait for it, so nothing
-/// keeps running from the old bundle.
+/// Before an update replaces the bundle: close every open project's webview
+/// (the window goes back to the Projects page, so an install that fails
+/// leaves a working window), then stop everything the app owns and wait for
+/// it, so nothing keeps running from the old bundle.
 pub(crate) fn release_for_update(app: &tauri::AppHandle) {
-    let multi = app
-        .try_state::<Mutex<AppState>>()
-        .and_then(|state| state.lock().ok().map(|state| state.multi))
-        .unwrap_or(false);
-    if multi {
-        if let Some(window) = main_window(app) {
-            for webview in window.webviews() {
-                tab_webviews::close_child(app, webview.label());
-            }
+    if let Some(window) = main_window(app) {
+        for webview in window.webviews() {
+            tab_webviews::close_child(app, webview.label());
         }
     }
     stop_owned_processes(app);
     tab_actions::publish(app);
-    if !window_is_on_home(app) || multi {
-        show_home(app);
-    }
+    show_home(app);
 }
 
 /// The Studio origin and project id of every project the window has open.
@@ -1212,7 +1133,7 @@ fn check_for_updates(app: &tauri::AppHandle) {
 /// Open a project off the setup path, reporting failure to the log.
 /// The sidecar start blocks on a port handshake and a readiness poll, so it
 /// runs on a blocking worker rather than the async runtime's event loop.
-/// The home page's loading overlay polls `/api/open-state` while this runs;
+/// The Projects page follows it through `/api/open-state` (`opens`) while this runs;
 /// failures there surface as an inline toast, not a stuck spinner.
 fn open_project_async(
     app: &tauri::AppHandle,
@@ -1398,28 +1319,15 @@ fn show_main_window(app: &tauri::AppHandle) {
     }
 }
 
-/// Whether the window currently shows the Projects page: with tabs, when the
-/// Projects tab is the active one; otherwise when the window's webview is on
-/// the home origin.
+/// Whether the window currently shows the Projects page: when the Projects tab
+/// is the active one.
 fn window_is_on_home(app: &tauri::AppHandle) -> bool {
-    let (tabs_home, multi, home) = {
-        let app_state = app.state::<Mutex<AppState>>();
-        let Ok(state) = app_state.lock() else {
-            return false;
-        };
-        (state.tabs_show_home(), state.multi, state.home_origin.clone())
-    };
-    if multi {
-        return tabs_home;
-    }
-    main_webview(app)
-        .and_then(|w| w.url().ok())
-        .map(|url| normalize_origin(&url) == home)
-        .unwrap_or(false)
+    let app_state = app.state::<Mutex<AppState>>();
+    app_state.lock().is_ok_and(|state| state.tabs_show_home())
 }
 
 /// The webview the user is looking at: the active project tab's, else the
-/// window's own (the Projects page, or the project in single-project mode).
+/// window's own (the Projects page).
 fn shown_webview(app: &tauri::AppHandle) -> Option<tauri::Webview> {
     let label = app.try_state::<Mutex<AppState>>().and_then(|state| {
         let state = state.lock().ok()?;
@@ -1429,73 +1337,23 @@ fn shown_webview(app: &tauri::AppHandle) -> Option<tauri::Webview> {
     tab_webviews::active_webview(app, label.as_deref())
 }
 
-/// Back to the Projects home screen. With tabs: the Projects tab shows and the
-/// open projects stay where they are. Otherwise the window navigates to the
-/// home server that has been up all along; the `on_navigation` hook on the main
-/// window runs the cleanup when that navigation lands, so the in-Studio back
-/// button (a plain document navigation, no IPC) takes the same path.
+/// Back to the Projects home screen: the Projects tab shows and the open
+/// projects stay where they are.
 fn show_home(app: &tauri::AppHandle) {
-    let (origin, multi) = {
-        let app_state = app.state::<Mutex<AppState>>();
-        let Ok(state) = app_state.lock() else {
-            return;
-        };
-        (state.home_origin.clone(), state.multi)
-    };
-    if multi {
-        let _ = tab_actions::activate(app, tabs::HOME);
-        return;
-    }
-    if let Some(webview) = main_webview(app) {
-        if let Ok(url) = origin.parse() {
-            if let Err(error) = webview.navigate(url) {
-                log_line(&format!("could not show the home screen: {error}"));
-            }
-        }
-    }
+    let _ = tab_actions::activate(app, tabs::HOME);
 }
 
 /// Help › Welcome to OpenVids…: open the first-run onboarding on the Projects
-/// page.
-///
-/// - On the Projects page: the page's own script opens it
-///   (`window.ovHome.openOnboarding()`), handed over by `eval` exactly like
-///   ⌘O hands `openProject()` to the page.
-/// - Showing a project: the window goes back to the Projects page (the same
-///   navigation Show All Projects does, with the same cleanup) and the next
-///   load of that page opens the onboarding: the request is stored in the home
-///   state and handed to the page in its boot state (`OV_BOOT.openOnboarding`,
-///   read once). Nothing is evaluated into a page that is still loading.
+/// page. The Projects page stays loaded under the project tabs: switch to it
+/// and hand the request over by script (`window.ovHome.openOnboarding()`),
+/// exactly like ⌘O hands `openProject()` to the page.
 fn show_onboarding(app: &tauri::AppHandle) {
-    let multi = app
-        .try_state::<Mutex<AppState>>()
-        .and_then(|state| state.lock().ok().map(|state| state.multi))
-        .unwrap_or(false);
-    if multi {
-        // The Projects page stays loaded under the project tabs: switch to it
-        // and hand the request over by script.
-        show_home(app);
-        if let Some(webview) = main_webview(app) {
-            let _ = webview.eval(
-                "window.ovHome && window.ovHome.openOnboarding && window.ovHome.openOnboarding()",
-            );
-        }
-        return;
-    }
-    if window_is_on_home(app) {
-        if let Some(webview) = main_webview(app) {
-            let _ = webview.eval(
-                "window.ovHome && window.ovHome.openOnboarding && window.ovHome.openOnboarding()",
-            );
-        }
-        return;
-    }
-    if let Some(state) = app.try_state::<Mutex<AppState>>() {
-        if let Ok(state) = state.lock() {
-            state.home.request_onboarding();
-        }
-    }
     show_home(app);
+    if let Some(webview) = main_webview(app) {
+        let _ = webview.eval(
+            "window.ovHome && window.ovHome.openOnboarding && window.ovHome.openOnboarding()",
+        );
+    }
 }
 
 /// Tell macOS which submenu is Help (it adds the menu search field to it).
@@ -1507,24 +1365,25 @@ fn set_help_menu(app: &tauri::AppHandle) {
     }
 }
 
-/// The `on_navigation` closure gets the URL but no `AppHandle`, so the handle
-/// is stashed here in `setup` before the window is built. Written once,
-/// cloned on each home navigation — a plain static behind a lock is enough.
-static APP_FOR_HOME_CLEANUP: std::sync::OnceLock<Mutex<Option<tauri::AppHandle>>> =
+/// Callbacks that get no `AppHandle` of their own (`on_new_window`, the
+/// `POST /api/menu/:action` route) reach it through this stash, filled in
+/// `setup` before the window is built. Written once, cloned on each use — a
+/// plain static behind a lock is enough.
+static APP_HANDLE: std::sync::OnceLock<Mutex<Option<tauri::AppHandle>>> =
     std::sync::OnceLock::new();
 
-fn app_handle_for_home_cleanup() -> Option<tauri::AppHandle> {
-    APP_FOR_HOME_CLEANUP
+fn stashed_app_handle() -> Option<tauri::AppHandle> {
+    APP_HANDLE
         .get()
         .and_then(|m| m.lock().ok())
         .and_then(|guard| guard.clone())
 }
 
 /// The handle `POST /api/menu/:action` dispatches through: the same handle
-/// the `on_navigation` cleanup stashes in `setup`, reused so the route and
-/// the native menu share one `menu_action` entry point.
+/// `setup` stashes, reused so the route and the native menu share one
+/// `menu_action` entry point.
 pub(crate) fn menu_app() -> Option<tauri::AppHandle> {
-    app_handle_for_home_cleanup()
+    stashed_app_handle()
 }
 
 /// `scheme://host:port` without path, query or fragment, so `/`, `/index.html`
@@ -1539,33 +1398,44 @@ fn normalize_origin(url: &tauri::Url) -> String {
     )
 }
 
-/// Whether a top-level page of the main window may stay on screen: the blank
-/// document, or a page of one of the app's own servers (Projects, the open
-/// project's Studio).
+/// Whether a top-level page may stay on screen: the blank document, or a page
+/// of one of `trusted_origins` (the main window: the Projects page; a project's
+/// webview: the app's own servers).
 fn top_level_allowed(url: &tauri::Url, trusted_origins: &[String]) -> bool {
     url.as_str() == "about:blank"
         || (url.scheme() == "http" && trusted_origins.contains(&normalize_origin(url)))
 }
 
 /// The main window committed a top-level document. A page that took the
-/// window over (a composition setting `top.location`) would fill it with no
-/// address bar, so anything outside the app's servers sends the window back to
-/// the Projects page. Page-load events fire for the top-level document only
-/// (WKNavigationDelegate `didCommitNavigation`, WebView2 `ContentLoading`), so
-/// the external iframes a composition embeds are not affected, unlike
-/// `on_navigation`.
+/// window over (a composition setting `top.location`, a link dropped on the
+/// Projects page) would fill it with no address bar, so anything but the
+/// Projects page sends the main webview back to it (the projects live in their
+/// own child webviews, never here). Page-load events fire for the top-level
+/// document only (WKNavigationDelegate `didCommitNavigation`, WebView2
+/// `ContentLoading`), so the external iframes a page embeds are not affected,
+/// unlike `on_navigation`.
 fn keep_main_window_on_app_pages(app: &tauri::AppHandle, url: &tauri::Url) {
-    let trusted = trusted_origins(app);
+    let home = app
+        .try_state::<Mutex<AppState>>()
+        .and_then(|state| state.lock().ok().map(|state| state.home_origin.clone()))
+        .unwrap_or_default();
     // No state yet (start-up) says nothing about what is trusted.
-    if trusted.is_empty() || top_level_allowed(url, &trusted) {
+    if home.is_empty() || top_level_allowed(url, std::slice::from_ref(&home)) {
         return;
     }
     log_line("a page outside the app took over the window, showing the Projects page");
     let app = app.clone();
-    std::thread::spawn(move || show_home(&app));
+    std::thread::spawn(move || {
+        if let (Some(webview), Ok(target)) = (main_webview(&app), home.parse::<tauri::Url>()) {
+            if let Err(error) = webview.navigate(target) {
+                log_line(&format!("could not show the home screen: {error}"));
+            }
+        }
+        show_home(&app);
+    });
 }
 
-/// A project's page committed a top-level document (tabs mode). A page outside
+/// A project's page committed a top-level document. A page outside
 /// the app's servers that took the webview over (a composition setting
 /// `top.location`) would fill it with no address bar: the page goes back to the
 /// project's own address instead of taking the window away from the other tabs.
@@ -1589,21 +1459,6 @@ fn keep_project_on_its_page(app: &tauri::AppHandle, key: &str, url: &tauri::Url)
             }
         });
     }
-}
-
-/// The main webview is navigating to `url`: keep the open-project state in
-/// step, and return the servers a navigation back to the Projects page closes.
-fn note_main_navigation(
-    app: &tauri::AppHandle,
-    url: &tauri::Url,
-) -> Vec<OpenProject<StudioServer>> {
-    let Some(state) = app.try_state::<Mutex<AppState>>() else {
-        return Vec::new();
-    };
-    let Ok(mut state) = state.lock() else {
-        return Vec::new();
-    };
-    state.navigated(&normalize_origin(url))
 }
 
 fn app_dirs(app: &tauri::AppHandle) -> (PathBuf, PathBuf, PathBuf) {
@@ -1653,23 +1508,19 @@ mod back_navigation_tests {
     fn studio_url_carries_home_theme_language_and_workspace_before_the_hash() {
         let home = "http://127.0.0.1:57035";
         let studio_origin = "http://127.0.0.1:5210";
+        let tab = "0123456789abcdef";
         assert_eq!(
-            sidecar::studio_url(studio_origin, "my video", home, "dark", "system", None, "overlay", false, None),
-            "http://127.0.0.1:5210/?openvidsHome=http%3A%2F%2F127.0.0.1%3A57035&openvidsTheme=dark&openvidsLanguage=system#project/my%20video"
+            sidecar::studio_url(studio_origin, "my video", home, "dark", "system", None, "overlay", false, tab),
+            "http://127.0.0.1:5210/?openvidsHome=http%3A%2F%2F127.0.0.1%3A57035&openvidsTheme=dark&openvidsLanguage=system&openvidsTab=0123456789abcdef#project/my%20video"
         );
         assert_eq!(
-            sidecar::studio_url(studio_origin, "v", home, "light", "ru", Some("media"), "overlay", false, None),
-            "http://127.0.0.1:5210/?openvidsHome=http%3A%2F%2F127.0.0.1%3A57035&openvidsTheme=light&openvidsLanguage=ru&openvidsWorkspace=media#project/v"
+            sidecar::studio_url(studio_origin, "v", home, "light", "ru", Some("media"), "overlay", false, tab),
+            "http://127.0.0.1:5210/?openvidsHome=http%3A%2F%2F127.0.0.1%3A57035&openvidsTheme=light&openvidsLanguage=ru&openvidsWorkspace=media&openvidsTab=0123456789abcdef#project/v"
         );
-        // Beta features on: the channel goes last, after the frame hint.
+        // Beta channel: it goes after the frame hint, before the tab key.
         assert_eq!(
-            sidecar::studio_url(studio_origin, "v", home, "dark", "system", None, "custom", true, None),
-            "http://127.0.0.1:5210/?openvidsHome=http%3A%2F%2F127.0.0.1%3A57035&openvidsTheme=dark&openvidsLanguage=system&openvidsFrame=custom&openvidsChannel=beta#project/v"
-        );
-        // With project tabs the tab key goes last.
-        assert_eq!(
-            sidecar::studio_url(studio_origin, "v", home, "dark", "system", None, "overlay", true, Some("0123456789abcdef")),
-            "http://127.0.0.1:5210/?openvidsHome=http%3A%2F%2F127.0.0.1%3A57035&openvidsTheme=dark&openvidsLanguage=system&openvidsChannel=beta&openvidsTab=0123456789abcdef#project/v"
+            sidecar::studio_url(studio_origin, "v", home, "dark", "system", None, "custom", true, tab),
+            "http://127.0.0.1:5210/?openvidsHome=http%3A%2F%2F127.0.0.1%3A57035&openvidsTheme=dark&openvidsLanguage=system&openvidsFrame=custom&openvidsChannel=beta&openvidsTab=0123456789abcdef#project/v"
         );
     }
 
@@ -1677,39 +1528,40 @@ mod back_navigation_tests {
     fn studio_url_appends_the_frame_hint_for_non_overlay_frames() {
         let home = "http://127.0.0.1:57035";
         let studio_origin = "http://127.0.0.1:5210";
+        let tab = "0123456789abcdef";
         // macOS overlay: no parameter, links stay as they were.
         assert!(
-            !sidecar::studio_url(studio_origin, "v", home, "dark", "system", None, "overlay", false, None)
+            !sidecar::studio_url(studio_origin, "v", home, "dark", "system", None, "overlay", false, tab)
                 .contains("openvidsFrame")
         );
         // Windows custom frame: the Studio header draws caption buttons.
         assert_eq!(
-            sidecar::studio_url(studio_origin, "v", home, "dark", "system", None, "custom", false, None),
-            "http://127.0.0.1:5210/?openvidsHome=http%3A%2F%2F127.0.0.1%3A57035&openvidsTheme=dark&openvidsLanguage=system&openvidsFrame=custom#project/v"
+            sidecar::studio_url(studio_origin, "v", home, "dark", "system", None, "custom", false, tab),
+            "http://127.0.0.1:5210/?openvidsHome=http%3A%2F%2F127.0.0.1%3A57035&openvidsTheme=dark&openvidsLanguage=system&openvidsFrame=custom&openvidsTab=0123456789abcdef#project/v"
         );
         // Windows system-frame fallback: explicit too, so the pages skip
         // their buttons. The workspace still sorts before the frame hint.
         assert_eq!(
-            sidecar::studio_url(studio_origin, "v", home, "dark", "system", Some("media"), "system", false, None),
-            "http://127.0.0.1:5210/?openvidsHome=http%3A%2F%2F127.0.0.1%3A57035&openvidsTheme=dark&openvidsLanguage=system&openvidsWorkspace=media&openvidsFrame=system#project/v"
+            sidecar::studio_url(studio_origin, "v", home, "dark", "system", Some("media"), "system", false, tab),
+            "http://127.0.0.1:5210/?openvidsHome=http%3A%2F%2F127.0.0.1%3A57035&openvidsTheme=dark&openvidsLanguage=system&openvidsWorkspace=media&openvidsFrame=system&openvidsTab=0123456789abcdef#project/v"
         );
     }
 
     #[test]
     fn the_design_intent_joins_the_query_before_the_hash_and_only_when_asked_for() {
         let url = sidecar::studio_url(
-            "http://127.0.0.1:5210", "v", "http://127.0.0.1:57035", "dark", "system", Some("media"), "custom", true, None,
+            "http://127.0.0.1:5210", "v", "http://127.0.0.1:57035", "dark", "system", Some("media"), "custom", true, "0123456789abcdef",
         );
         assert_eq!(sidecar::with_design_intent(url.clone(), None), url);
         let create = sidecar::DesignIntent::from_request(Some("create"), None);
         assert_eq!(
             sidecar::with_design_intent(url.clone(), create),
-            "http://127.0.0.1:5210/?openvidsHome=http%3A%2F%2F127.0.0.1%3A57035&openvidsTheme=dark&openvidsLanguage=system&openvidsWorkspace=media&openvidsFrame=custom&openvidsChannel=beta&openvidsDesign=create#project/v"
+            "http://127.0.0.1:5210/?openvidsHome=http%3A%2F%2F127.0.0.1%3A57035&openvidsTheme=dark&openvidsLanguage=system&openvidsWorkspace=media&openvidsFrame=custom&openvidsChannel=beta&openvidsTab=0123456789abcdef&openvidsDesign=create#project/v"
         );
         let from_video = sidecar::DesignIntent::from_request(Some("create"), Some("video"));
         assert_eq!(
             sidecar::with_design_intent(url, from_video),
-            "http://127.0.0.1:5210/?openvidsHome=http%3A%2F%2F127.0.0.1%3A57035&openvidsTheme=dark&openvidsLanguage=system&openvidsWorkspace=media&openvidsFrame=custom&openvidsChannel=beta&openvidsDesign=create&openvidsDesignSource=video#project/v"
+            "http://127.0.0.1:5210/?openvidsHome=http%3A%2F%2F127.0.0.1%3A57035&openvidsTheme=dark&openvidsLanguage=system&openvidsWorkspace=media&openvidsFrame=custom&openvidsChannel=beta&openvidsTab=0123456789abcdef&openvidsDesign=create&openvidsDesignSource=video#project/v"
         );
     }
 

@@ -515,11 +515,10 @@ A design system is a saved look (palette, fonts, transitions, rules) in the user
 and the service renders `system.html` / `tokens.css` / the thumbnail. A project carries one version of a system as a
 snapshot in `<project>/design/` (`system.html`, `tokens.css`, `fonts/`, `design.json`).
 
-- **Beta flag.** Design Systems is on only when the process env has `OPENVIDS_BETA_FEATURES=1` (the desktop shell sets it
-  from its release channel on the Studio sidecar, which the runtime inherits; `designFeatureEnabled` in
-  `src/design/feature.ts`). Off, `main.ts` wires no design host, so `designAction` is refused, no agent gets a design tool,
-  and neither the role prompts (`DESIGN_DIRECTOR` / `DESIGN_SPECIALIST`, `RoleOptions.design`), the `<project-design>`
-  block nor the `inspect_project` line mention design systems. `ToolAvailability.design` is that host's presence.
+- **Design host.** `main.ts` always wires the design host. A runtime without one (a test fixture, another embedder)
+  refuses `designAction`, gives no agent a design tool, and neither the role prompts (`DESIGN_DIRECTOR` /
+  `DESIGN_SPECIALIST`, `RoleOptions.design`), the `<project-design>` block nor the `inspect_project` line mention design
+  systems. `ToolAvailability.design` is that host's presence.
 - **Host** (`src/design/host.http.ts`, bound to one project; `${studioOrigin}/api/design-systems` and
   `/api/projects/:id/design`): `list` (`GET /design-systems`), `get` (`GET /design-systems/:id[?version=n]`), `save`
   (`PUT /design-systems/:id`, answers are validated with the protocol guards; a save ignores the turn's abort, like a
@@ -535,7 +534,7 @@ snapshot in `<project>/design/` (`system.html`, `tokens.css`, `fonts/`, `design.
   `TurnSummary`. The turn is an `edit`-intent, checkpointed turn in the chat's mode (the chat's intent is left alone),
   Director-led; the story blocks, the plan-approval block, the Story Mode offer and Render QA do not apply to it. A
   runtime without a design host refuses the action.
-- **Tools** (`src/design/tools.ts`, executor `src/design/executor.ts`; the Director only, when the feature is on — all of them in a design turn, the free-mode subset below in an ordinary one):
+- **Tools** (`src/design/tools.ts`, executor `src/design/executor.ts`; the Director only, with a design host — all of them in a design turn, the free-mode subset below in an ordinary one):
   `list_design_systems`, `read_design_system` (spec as text, with the version to use as `baseVersion`, plus the
   manifest's guesses), `extract_project_design` (the deterministic extraction, counted; the other project's one for an
   `external_project` source), `video_palette` (measured `#rrggbb` shares), `save_design_system` and
@@ -736,10 +735,9 @@ voices and dialects; `/api/projects/:id/voice` for the project's script, takes a
 `packages/agent-protocol/src/voice.ts` and `voiceDialects.ts`) holds the keys and does every call — a key never reaches the
 runtime or a model, and the agents name a saved voice (a preset) and send lines, never an address.
 
-- **Beta flag.** Voiceover is on only when the process env has `OPENVIDS_BETA_FEATURES=1` (`voiceFeatureEnabled` in
-  `src/voice/feature.ts`, same gate as Design Systems). Off, `main.ts` wires no voice host: no agent gets a voice tool, and
-  neither the role prompts (`VOICE_DIRECTOR` / `VOICE_AUDIO`, `RoleOptions.voice`) nor the plan mention narration.
-  `ToolAvailability.voice` is that host's presence.
+- **Voice host.** `main.ts` always wires the voice host. A runtime without one (a test fixture, another embedder) gives no
+  agent a voice tool, and neither the role prompts (`VOICE_DIRECTOR` / `VOICE_AUDIO`, `RoleOptions.voice`) nor the plan
+  mention narration. `ToolAvailability.voice` is that host's presence.
 - **Host** (`src/voice/host.http.ts`, bound to one project): `presets` / `getPreset` (`GET /voice/presets`), `providers`
   (the user's "Rules for the agent" ride on each), `dialects`, `script` / `saveScript` / `setProjectVoice`
   (`GET|PUT …/voice/script`, `PUT …/voice/voice`), `check` (`POST …/voice/check`: dialect check and estimate, nothing

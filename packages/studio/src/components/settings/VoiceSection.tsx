@@ -6,7 +6,7 @@ import { VoiceProviderBlock } from "./VoiceProviderBlock";
 import { SettingsGroup, SettingsPage } from "./settingsLayout";
 
 /**
- * Settings › Voice (a beta section): the services that speak a script with the user's own key, and the voices saved
+ * Settings › Voice: the services that speak a script with the user's own key, and the voices saved
  * from them. Keys are written here and never read back; the Projects page edits the same files.
  */
 export function VoiceSection() {

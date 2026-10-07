@@ -93,7 +93,7 @@ fn rename_recent(
     // covers every project the window has open, and also one whose server is
     // still starting.
     if inner.is_open(key) {
-        return Some(Err(RenameRefusal::Failed(project_in_use(inner))));
+        return Some(Err(RenameRefusal::Failed(project_in_use())));
     }
     let new_dir = entry.dir.parent()?.join(new_name);
     // On a case-insensitive filesystem (APFS and NTFS defaults) a case-only
@@ -183,21 +183,16 @@ fn remove_dev_link(old_dir: &Path) {
     }
 }
 
-/// The refusal for changing a project that is open: in single-project mode it is
-/// closed by going back to the Projects page, with tabs by closing its tab.
-fn project_in_use(inner: &HomeInner) -> CodedError {
-    if inner.tabs.enabled {
-        CodedError::plain("project_in_use_tab", "that project is open — close its tab first")
-    } else {
-        CodedError::plain("project_in_use", "that project is open — use Show All Projects first")
-    }
+/// The refusal for changing a project that is open: it is closed by closing its tab.
+fn project_in_use() -> CodedError {
+    CodedError::plain("project_in_use_tab", "that project is open — close its tab first")
 }
 
 pub fn handle_trash(stream: &mut TcpStream, state: &Arc<Mutex<HomeInner>>, body: &[u8]) {
     let key = json_field(body, "id").unwrap_or_default();
     let (dir, refusal) = state.lock().ok().map_or((None, None), |inner| {
         let dir = inner.recents.find_by_key(&key).map(|e| e.dir.clone());
-        let refusal = (dir.is_some() && inner.is_open(&key)).then(|| project_in_use(&inner));
+        let refusal = (dir.is_some() && inner.is_open(&key)).then(project_in_use);
         (dir, refusal)
     });
     let Some(dir) = dir else {

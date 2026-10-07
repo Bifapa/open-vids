@@ -1,7 +1,6 @@
 import { useEffect, useMemo } from "react";
 import type { AgentStore } from "../agent/agentStore";
 import type { DesignTurnSpec } from "../agent/designTurn";
-import { isBetaFeatureEnabled } from "../betaFeatures";
 import { useDockLayoutStore } from "../components/dock/dockLayoutStore";
 import { useFileManagerContextOptional } from "../contexts/FileManagerContext";
 import { isLibraryPath, mediaKindOf } from "../media/mediaLibrary";
@@ -18,20 +17,9 @@ import { designAgentBlocker, useDesignAgent, useDesignAgentSync } from "./useDes
  * The design surface's modals and its upkeep, mounted once with the project's agent store beside the chat (the
  * titlebar's popover only asks for a dialog; starting an agent turn needs the store). It keeps the design state on
  * the open project, reads it again whenever a turn ends, and opens "Create design system" when the desktop shell asks
- * for it once (`openvidsDesign=create`, taken from the address). Nothing renders with the beta flag off.
+ * for it once (`openvidsDesign=create`, taken from the address).
  */
 export function DesignHost({
-  projectId,
-  agentStore,
-}: {
-  projectId: string;
-  agentStore: AgentStore | null;
-}) {
-  if (!isBetaFeatureEnabled("designSystems")) return null;
-  return <DesignHostBody projectId={projectId} agentStore={agentStore} />;
-}
-
-function DesignHostBody({
   projectId,
   agentStore,
 }: {

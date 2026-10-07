@@ -81,12 +81,12 @@ export interface ToolAvailability {
    */
   designAction?: DesignAction | null;
   /**
-   * The runtime has a design host (Design Systems is on): the Director gets the design tools — all of them in a design
+   * The runtime has a design host: the Director gets the design tools — all of them in a design
    * turn, the typed-request subset (list, read, extract, save, attach) in an ordinary one.
    */
   design?: boolean;
   /**
-   * The runtime has a voice host (Voiceover is on): Audio gets `request_voice_setup` and `generate_voiceover`, the
+   * The runtime has a voice host: Audio gets `request_voice_setup` and `generate_voiceover`, the
    * Director `request_voice_setup` and, while Audio is off in the chat, `generate_voiceover` too.
    */
   voice?: boolean;

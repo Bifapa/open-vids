@@ -7,7 +7,6 @@
 
 import { VOICE_LINE_ATTRIBUTE } from "@hyperframes/agent-protocol";
 import { ArrowSquareOut, ArrowsClockwise, Lock } from "@phosphor-icons/react";
-import { isBetaFeatureEnabled } from "../../betaFeatures";
 import { Badge, Button } from "../../components/ui";
 import { t as translate, useTranslation } from "../../i18n";
 import { useVoiceEditLock, useLineIssues, useVoiceScript } from "../../voice/script/useVoiceScript";
@@ -22,9 +21,8 @@ import { useVoiceTakeActions } from "../../voice/panel/useVoiceTakeActions";
 import type { DomEditSelection } from "./domEditingTypes";
 import type { FlatGroupDescriptor } from "./propertyPanelFlatDescriptors";
 
-/** The line a selected clip speaks, or null (not a voice clip, or the beta feature is off). */
+/** The line a selected clip speaks, or null (not a voice clip). */
 export function voiceLineOfSelection(element: DomEditSelection | null | undefined): string | null {
-  if (!isBetaFeatureEnabled("voiceover")) return null;
   const id = element?.dataAttributes?.[VOICE_LINE_ATTRIBUTE.slice("data-".length)];
   return id ? id : null;
 }

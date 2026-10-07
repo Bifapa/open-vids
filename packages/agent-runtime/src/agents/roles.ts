@@ -127,10 +127,10 @@ function inheritedWork(id: SpecialistId, options: RoleOptions): string {
   return sections.join("\n");
 }
 
-/** What differs between runtimes: Design Systems and Voiceover are on only when the runtime has their host (the beta flag). */
+/** What differs between runtimes: Design Systems and Voiceover are described only when the runtime has their host. */
 export interface RoleOptions {
   design?: boolean;
-  /** The runtime has a voice host (Voiceover is on, the beta flag): the agents that speak get voiceover duties. */
+  /** The runtime has a voice host: the agents that speak get voiceover duties. */
   voice?: boolean;
 }
 

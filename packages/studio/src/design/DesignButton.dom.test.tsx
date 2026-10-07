@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 
 /**
- * The titlebar's design-system popover: gated by the beta flag, what it says about the attached system (name, version,
+ * The titlebar's design-system popover: what it says about the attached system (name, version,
  * palette, display font, honest chips), the explicit Update button that exists only for a newer library version,
  * attaching and detaching through the right routes with the state read again, and how it closes.
  */
@@ -19,14 +19,7 @@ import {
   type FakeDesign,
   type FakeDesignData,
 } from "./designTestHarness";
-import {
-  byText,
-  press,
-  pressAndSettle,
-  pressEscape,
-  settle,
-  visitStudio,
-} from "./designDom.testHelpers";
+import { byText, press, pressAndSettle, pressEscape, settle } from "./designDom.testHelpers";
 import { useDesignUi } from "./designUiStore";
 
 const MONO = designSummary({
@@ -68,27 +61,15 @@ async function openPopover(mounted: Mounted): Promise<void> {
 }
 
 beforeEach(() => {
-  visitStudio("beta");
   useDesignUi.setState({ dialog: null });
 });
 
 afterEach(() => {
   cleanupMounted();
-  visitStudio("");
 });
 
-describe("the beta flag", () => {
-  it("renders nothing and never calls the design service when it is off", async () => {
-    visitStudio("");
-    const { host, client } = mountButton({ state: attachedState() });
-    await settle();
-    expect(host.innerHTML).toBe("");
-    expect(trigger()).toBeNull();
-    expect(client.getProject).not.toHaveBeenCalled();
-    expect(client.listLibrary).not.toHaveBeenCalled();
-  });
-
-  it("is an icon-only button named for assistive tech when it is on", async () => {
+describe("the button", () => {
+  it("is an icon-only button named for assistive tech", async () => {
     mountButton();
     await settle();
     expect(trigger()?.getAttribute("aria-label")).toBe("Design system");

@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { Lock, Microphone, Plus, WarningCircle } from "@phosphor-icons/react";
-import { isBetaFeatureEnabled } from "../../betaFeatures";
 import { Button, Input, Spinner } from "../../components/ui";
 import { useTranslation } from "../../i18n";
 import { usePlayerStore } from "../../player";
@@ -20,14 +19,9 @@ import { useVoiceTakeActions } from "./useVoiceTakeActions";
 /**
  * The Voiceover tab: the project's script. The voice and language at the top, then every line with its text (tags as
  * chips), its takes and what the last dialect check found, and the actions that spend money or touch the timeline
- * (Generate missing, Regenerate, Add to timeline, Carve music) each asking or saying why they cannot. Beta only.
+ * (Generate missing, Regenerate, Add to timeline, Carve music) each asking or saying why they cannot.
  */
 export function VoiceoverPanel({ projectId }: { projectId: string }) {
-  if (!isBetaFeatureEnabled("voiceover")) return null;
-  return <VoiceoverPanelBody projectId={projectId} />;
-}
-
-function VoiceoverPanelBody({ projectId }: { projectId: string }) {
   const { t } = useTranslation();
   const state = useVoiceScript(projectId);
   const { locked, reason } = useVoiceEditLock();

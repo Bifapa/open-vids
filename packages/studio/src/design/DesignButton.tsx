@@ -1,23 +1,17 @@
 import { useEffect, useState } from "react";
 import { Palette } from "@phosphor-icons/react";
 import { IconButton, Popover, Tooltip } from "../components/ui";
-import { isBetaFeatureEnabled } from "../betaFeatures";
 import { useTranslation } from "../i18n";
 import { useDesignStore, useDesignStoreApi } from "./designContext";
 import { DesignPanel } from "./DesignPanel";
 
 /**
- * The titlebar's design-system entry (beta): an icon-only button whose popover (under it, ~360 px, the editor stays
+ * The titlebar's design-system entry: an icon-only button whose popover (under it, ~360 px, the editor stays
  * lit) shows the project's system and the library. It closes on an outside click, on Esc and on a second press of
  * the button (Base UI's popover); the state is read again each time it opens. A dot on the icon says the library
  * holds a newer version of the attached system — nothing updates until the user presses the button inside.
  */
 export function DesignButton({ projectId }: { projectId: string }) {
-  if (!isBetaFeatureEnabled("designSystems")) return null;
-  return <DesignButtonBody projectId={projectId} />;
-}
-
-function DesignButtonBody({ projectId }: { projectId: string }) {
   const { t } = useTranslation();
   const store = useDesignStoreApi();
   const [open, setOpen] = useState(false);

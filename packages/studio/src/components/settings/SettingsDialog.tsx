@@ -26,12 +26,7 @@ import { JevSection } from "./JevSection";
 import { providerIssueCount } from "./providerStatus";
 import { ProvidersSection } from "./ProvidersSection";
 import { SettingsPage, SettingsUnavailable } from "./settingsLayout";
-import {
-  availableSettingsSections,
-  isSettingsSectionAvailable,
-  useSettingsDialog,
-  type SettingsSection,
-} from "./settingsStore";
+import { SETTINGS_SECTIONS, useSettingsDialog, type SettingsSection } from "./settingsStore";
 import { VoiceSection } from "./VoiceSection";
 import "./settings.css";
 
@@ -100,7 +95,7 @@ function SettingsNav({
   onSelect: (section: SettingsSection) => void;
 }) {
   const { t } = useTranslation();
-  const sections = availableSettingsSections();
+  const sections = SETTINGS_SECTIONS;
   // Up and Down walk the sections, as in the prototype; Tab leaves the list.
   const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
@@ -221,9 +216,7 @@ function SectionBody({
 export function SettingsDialog({ agentStore }: { agentStore: AgentStore | null }) {
   const { t } = useTranslation();
   const open = useSettingsDialog((state) => state.open);
-  const storedSection = useSettingsDialog((state) => state.section);
-  // A beta section whose flag is off is never shown, whatever the store holds.
-  const section = isSettingsSectionAvailable(storedSection) ? storedSection : "general";
+  const section = useSettingsDialog((state) => state.section);
   const returnFocus = useSettingsDialog((state) => state.returnFocus);
   const setSection = useSettingsDialog((state) => state.setSection);
   const close = useSettingsDialog((state) => state.close);

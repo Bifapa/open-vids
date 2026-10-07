@@ -31,7 +31,7 @@ export function isDesignToolName(name: string): name is DesignToolName {
 type Executor = (name: string, args: unknown, signal: AbortSignal) => Promise<HostToolResult>;
 
 /**
- * The turn the tools are built for. `available`: the runtime has a design host (the feature is on). `action`: the
+ * The turn the tools are built for. `available`: the runtime has a design host. `action`: the
  * Design Systems action the turn runs, if any; without one the turn is an ordinary turn in which the user may still
  * ask for a design system in words ("free mode").
  */

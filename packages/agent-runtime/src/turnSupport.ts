@@ -69,7 +69,7 @@ export interface TurnRunnerOptions {
   /**
    * Opens the voice host (the user's voice providers and saved voices, the project's script and takes, synthesis) of a
    * project. Without it the agents get no voice tools and their prompts say nothing about voiceover; the production
-   * runtime provides it only when the beta feature is on.
+   * runtime always provides it.
    */
   voice?: (scope: ProjectScope) => VoiceHost;
   /**

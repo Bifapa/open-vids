@@ -1,6 +1,6 @@
 /**
- * Voiceover prompt blocks. They are added to the role instructions only when the runtime has a voice host (the beta
- * flag): without it the agents are told nothing about narration, so they never promise what they cannot do.
+ * Voiceover prompt blocks. They are added to the role instructions only when the runtime has a voice host: without
+ * it the agents are told nothing about narration, so they never promise what they cannot do.
  */
 
 const VOICE_SETUP_RULES = `The voice comes from the user's own provider account (Gemini, OpenAI, OpenRouter, ElevenLabs or a server they run); you never see a key and never choose a provider or an address. request_voice_setup {language, sampleText, suggestion} asks the user to pick the voice in the chat and waits: it returns the chosen voice and its script dialect (the tags, pauses, style field and length limits the script must follow). If the user declines or does not answer, there is no voiceover: say so and stop, never look for another way to make speech.`;

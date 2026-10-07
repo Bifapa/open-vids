@@ -788,7 +788,7 @@ html.custom-frame .tb-sep-actions {
   }
 }
 
-/* ---- Opening a project: the window stays on Projects until Studio answers ---- */
+/* ---- Full-window progress overlay (the fork's copy progress) ---- */
 .opening {
   position: absolute;
   inset: 0;

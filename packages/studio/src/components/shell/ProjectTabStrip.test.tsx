@@ -2,7 +2,7 @@
 
 /**
  * The project tab strip: who is selected, what a click, a fork, a ×, a spinner and the keys do, and that the page
- * draws nothing at all when tabs are off. The view takes its data as props; the wrapper is exercised
+ * draws nothing at all outside a desktop project tab. The view takes its data as props; the wrapper is exercised
  * against a stand-in for the shell's home server.
  */
 import { act, type ReactElement } from "react";
@@ -350,17 +350,16 @@ describe("ProjectTabStrip", () => {
     return state;
   }
 
-  const enabledUrl = `/?openvidsHome=${encodeURIComponent(HOME)}&openvidsChannel=beta&openvidsTab=${OWN}`;
+  const enabledUrl = `/?openvidsHome=${encodeURIComponent(HOME)}&openvidsTab=${OWN}`;
   const flush = () =>
     act(async () => void (await new Promise((resolve) => setTimeout(resolve, 0))));
   const showToast = vi.fn<(message: string, tone?: "error" | "info") => void>();
 
   it.each([
-    ["the beta flag is off", `/?openvidsHome=${encodeURIComponent(HOME)}&openvidsTab=${OWN}`],
-    ["there is no tab key", `/?openvidsHome=${encodeURIComponent(HOME)}&openvidsChannel=beta`],
-    ["it runs outside the desktop", `/?openvidsChannel=beta&openvidsTab=${OWN}`],
+    ["there is no tab key", `/?openvidsHome=${encodeURIComponent(HOME)}`],
+    ["it runs outside the desktop", `/?openvidsTab=${OWN}`],
   ])("renders nothing, not even an empty box, when %s", async (_why, url) => {
-    const home = stubHome({ enabled: true, active: "home", limit: 6, tabs: [] });
+    const home = stubHome({ active: "home", limit: 6, tabs: [] });
     window.history.replaceState(null, "", url);
     const host = render(<ProjectTabStrip showToast={showToast} />);
     await flush();
@@ -368,17 +367,8 @@ describe("ProjectTabStrip", () => {
     expect(home.requests).toEqual([]);
   });
 
-  it("renders nothing while the shell says tabs are off", async () => {
-    stubHome({ enabled: false });
-    window.history.replaceState(null, "", enabledUrl);
-    const host = render(<ProjectTabStrip showToast={showToast} />);
-    await flush();
-    expect(host.innerHTML).toBe("");
-  });
-
   it("draws the shell's tabs with the page's own one selected, and switches and closes through the shell", async () => {
     const home = stubHome({
-      enabled: true,
       active: SECOND,
       limit: 6,
       tabs: [

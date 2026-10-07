@@ -4,7 +4,7 @@
  * The voice surfaces of the chat: the voice-setup card (its faces, answers and failures), the pilot-line card, the
  * `voice_generation` permission card and the tag chips of plan steps. The shell context is stubbed to one project.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ReactElement } from "react";
 import { VOICE_DIALECTS, type PermissionVoice, type PlanStep } from "@hyperframes/agent-protocol";
 import { AgentStoreProvider } from "../../agent/agentContext";
@@ -34,7 +34,6 @@ import {
   pressAndSettle,
   settle,
   typeInto,
-  visitStudio,
 } from "../../voice/voiceDom.testHelpers";
 import { useVoiceUi } from "../../voice/voiceUiStore";
 import {
@@ -62,12 +61,9 @@ vi.mock("../../voice/voiceAudio", async (importOriginal) => ({
   stopVoiceSound: vi.fn(),
 }));
 
-beforeEach(() => visitStudio("beta"));
-
 afterEach(() => {
   cleanupMounted();
   vi.clearAllMocks();
-  visitStudio("");
   useVoiceUi.setState({ setup: null });
   useSettingsDialog.setState({ open: false, section: "general" });
 });
@@ -257,14 +253,10 @@ describe("the voice-setup card", () => {
     }
   });
 
-  it("is drawn in an assistant reply only in a beta build", () => {
+  it("is drawn in an assistant reply", () => {
     const message = assistantMessage({ parts: [voiceSetupPart({ state: "declined" })] });
     const { host } = mountWith(<AssistantBlock message={message} />);
     expect(card(host)).not.toBeNull();
-    cleanupMounted();
-    visitStudio("");
-    const plain = mountWith(<AssistantBlock message={message} />);
-    expect(card(plain.host)).toBeNull();
   });
 });
 
@@ -345,15 +337,10 @@ describe("the pilot-line card", () => {
     expect(byTestId(host, "voice-pilot-feedback")?.textContent).toBe("slower and warmer");
   });
 
-  it("is drawn in an assistant reply only in a beta build", () => {
+  it("is drawn in an assistant reply", () => {
     const message = assistantMessage({ parts: [voicePilotPart({ state: "approved" })] });
     const { host } = mountWith(<AssistantBlock message={message} />);
     expect(byTestId(host, "voice-pilot-card")).not.toBeNull();
-    cleanupMounted();
-    visitStudio("");
-    expect(
-      byTestId(mountWith(<AssistantBlock message={message} />).host, "voice-pilot-card"),
-    ).toBeNull();
   });
 });
 
@@ -464,17 +451,9 @@ describe("tags in plan steps", () => {
     expect(host.querySelector("li")?.textContent).toContain("Say <sigh> now");
   });
 
-  it("does not ask the server about plain titles, or at all outside a beta build", async () => {
+  it("does not ask the server about plain titles", async () => {
     const plain = mountWith(<PlanStepList steps={[step("a", "Trim the intro")]} />);
     await settle();
     expect(plain.voice.calls.script).not.toHaveBeenCalled();
-    cleanupMounted();
-    visitStudio("");
-    const stable = mountWith(<PlanStepList steps={[step("a", "Say <sigh> now")]} />, {
-      script: scriptView({ voice: PROJECT_VOICE, dialect: GEMINI }),
-    });
-    await settle();
-    expect(stable.voice.calls.script).not.toHaveBeenCalled();
-    expect(chips(stable.host)).toEqual([]);
   });
 });

@@ -58,7 +58,6 @@ function bootFor(frame) {
   return {
     frame,
     intro: false,
-    openOnboarding: false,
     prefs: {
       theme: "dark",
       density: "default",

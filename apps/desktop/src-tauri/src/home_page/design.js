@@ -1,24 +1,13 @@
-/* Projects page → Design systems (beta, behind OV.betaFeatures()). The library is ~/.openvids/design-systems, read
+/* Projects page → Design systems. The library is ~/.openvids/design-systems, read
    through the home server: GET /api/design-systems → {systems: DesignSystemSummary[]}; PATCH /api/design-systems/:id
    {name}; DELETE (all with the token); the <img> loads the token-free GET /design-files/:id/thumbnail.svg. This file
    owns the section: the card grid, the states
    (loading, empty, error), keyboard roving, inline rename and the delete confirm. The view and Create dialogs and the
    New Project picker are in design-sheets.js, which adds itself to window.OVDesign; home.js hands over the recent
-   projects and the open-project call (OVDesign.mount). A stable build gets inert hooks and draws nothing.
+   projects and the open-project call (OVDesign.mount).
    Server text is escaped or validated before it reaches markup. */
 (function () {
   "use strict";
-  const inert = {
-    mount() {},
-    sync() {},
-    pickerHtml: () => "",
-    bindPicker: () => ({ id: () => null }),
-    warning: () => "",
-  };
-  if (!OV.betaFeatures()) {
-    window.OVDesign = inert;
-    return;
-  }
   const { ic, esc, api, describeError, fmtNumber } = OV;
   const { toast, showMenu, sheet } = OVH;
   const tr = (key, params) => OVI18N.t(key, params);

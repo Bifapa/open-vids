@@ -1,4 +1,4 @@
-/* Projects page → Design systems (beta). Cards, badges, sheets and empty states come from ov.css / home.css; only
+/* Projects page → Design systems. Cards, badges, sheets and empty states come from ov.css / home.css; only
    what is new lives here. Every color is a token, so both themes follow. */
 
 /* ---- Section: the Last Opened inset, a label row, then a card grid ---- */
@@ -325,23 +325,4 @@
   margin-left: auto;
   opacity: 0.7;
   font-size: var(--text-xs);
-}
-
-/* ---- Opening overlay: a non-blocking note from the server (the design system was not applied) ---- */
-.opening-card:has(.opening-note) {
-  flex-wrap: wrap;
-}
-.opening-note {
-  display: flex;
-  flex-basis: 100%;
-  align-items: flex-start;
-  gap: 6px;
-  color: var(--warning);
-  font-size: var(--text-xs);
-  line-height: 15px;
-}
-.opening-note .ic {
-  --s: var(--ic-sm);
-  flex: none;
-  margin-top: 1px;
 }

@@ -1,4 +1,4 @@
-//! The Projects page's voiceover routes (Settings › Voice, beta): the subset of Studio's `/api/voice/*` routes
+//! The Projects page's voiceover routes (Settings › Voice): the subset of Studio's `/api/voice/*` routes
 //! (`packages/studio-server/src/routes/voice.ts`) that only touch the files `voice_settings` owns. Synthesis, key
 //! checks and the voice catalog stay in Studio's server: the shell makes no network call. All of them are `/api/`
 //! routes, so the per-launch token guards them (the sample audio is fetched with it and played from a blob).

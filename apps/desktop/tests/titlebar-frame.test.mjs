@@ -29,6 +29,7 @@ const sources = {
   design: read("design.js"),
   designSheets: read("design-sheets.js"),
   composer: read("composer.js"),
+  tabs: read("tabs.js"),
   home: read("home.js"),
 };
 
@@ -47,7 +48,6 @@ function loadDocument({ frame, width, update = {}, language }) {
   const boot = {
     frame,
     intro: false,
-    openOnboarding: false,
     prefs: {
       theme: "dark",
       density: "default",
@@ -81,7 +81,8 @@ function loadDocument({ frame, width, update = {}, language }) {
       "/api/agent/models": { models: [] },
       "/api/agent/settings": { director: {} },
       "/api/update/status": status.body,
-      "/api/open-state": { phase: "idle" },
+      "/api/open-state": { phase: "idle", opens: [] },
+      "/api/tabs": { active: "home", limit: 6, tabs: [] },
       "/api/locations": { default: "/tmp", locations: [] },
     };
     const body = bodies[path] !== undefined ? bodies[path] : {};
@@ -109,6 +110,7 @@ function loadDocument({ frame, width, update = {}, language }) {
   win.eval(sources.design);
   win.eval(sources.designSheets);
   win.eval(sources.composer);
+  win.eval(sources.tabs);
   win.eval(sources.home);
   win.dispatchEvent(new win.Event("DOMContentLoaded"));
   win.innerWidth = width;

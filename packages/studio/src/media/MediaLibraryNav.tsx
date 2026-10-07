@@ -16,7 +16,6 @@ import {
   TextAa,
   Tray,
 } from "@phosphor-icons/react";
-import { isBetaFeatureEnabled } from "../betaFeatures";
 import { Meter, cn } from "../components/ui";
 import { formatNumber, useTranslation, type TranslationKey } from "../i18n";
 import {
@@ -205,9 +204,7 @@ export function MediaLibraryNav({
         className="flex min-h-0 flex-1 flex-col gap-px overflow-y-auto px-1.5 pt-1 pb-2.5"
         data-testid="media-library-nav"
       >
-        {GROUPS.filter(
-          (group) => group.label !== "media.nav.group.voice" || isBetaFeatureEnabled("voiceover"),
-        ).map((group, index) => (
+        {GROUPS.map((group, index) => (
           <div key={group.label} className="contents">
             <div
               className={cn(

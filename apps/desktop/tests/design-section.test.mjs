@@ -1,4 +1,4 @@
-/* The Projects page's Design systems section (home_page/design.js + design-sheets.js): shown only in beta builds,
+/* The Projects page's Design systems section (home_page/design.js + design-sheets.js):
    cards with the honest caveats, rename / delete / view / create flows and the New Project picker. The page scripts are
    browser globals; they run in a happy-dom window with a fake home server (fetch) behind them. */
 import assert from "node:assert/strict";
@@ -80,7 +80,7 @@ const PROJECTS = [
 ];
 
 /* A page with the scripts loaded and a fake home server; `server` says how the library answers. */
-function load({ beta = true, systems = SYSTEMS(), projects = PROJECTS, listFails = false } = {}) {
+function load({ systems = SYSTEMS(), projects = PROJECTS, listFails = false } = {}) {
   const win = new Window({ url: "http://localhost/" });
   const requests = [];
   const store = { systems, listFails };
@@ -109,7 +109,7 @@ function load({ beta = true, systems = SYSTEMS(), projects = PROJECTS, listFails
     }
     return reply(200, { ...s, ...(DETAIL[id] || { fonts: [], transitions: 0, versions: 1 }) });
   };
-  win.OV_BOOT = { betaFeatures: beta };
+  win.OV_BOOT = {};
   win.document.body.innerHTML =
     '<div class="window" id="win"><main class="main" id="main"><section id="recent"></section></main><div id="layer"></div></div>';
   for (const name of ["shared.js", "i18n.js"]) win.eval(page(name));
@@ -132,17 +132,6 @@ const key = (win, el, k, init = {}) =>
     new win.KeyboardEvent("keydown", { key: k, bubbles: true, cancelable: true, ...init }),
   );
 const card = (doc, id) => doc.querySelector(`[data-ds][data-id="${id}"]`);
-
-test("a stable build draws nothing and never asks the library", async () => {
-  const { win, doc, requests } = load({ beta: false });
-  await settle();
-  assert.equal(doc.getElementById("designs"), null);
-  assert.deepEqual(requests, []);
-  assert.equal(win.OVDesign.pickerHtml(), "");
-  assert.equal(win.OVDesign.bindPicker(doc.body).id(), null);
-  assert.equal(win.OVDesign.warning({ designWarning: "x" }), "");
-  win.happyDOM.abort();
-});
 
 test("cards show source, honest caveats, and only validated markup", async () => {
   const { win, doc } = load();

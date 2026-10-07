@@ -13,7 +13,7 @@ use std::sync::Mutex;
 use tauri::{AppHandle, Manager};
 
 use super::tab_webviews;
-use super::tabs::{ActivateError, CloseOutcome, Surface, TabActions};
+use super::tabs::{ActivateError, CloseOutcome, TabActions};
 use super::updater::Activity;
 use super::{i18n, AppState};
 
@@ -22,25 +22,20 @@ use super::{i18n, AppState};
 /// against). Called with the state lock held after every change, so the pages
 /// never read a list that disagrees with the windows.
 pub fn publish_state(state: &AppState) {
-    state
-        .home
-        .publish_tabs(state.tabs.view(state.multi), state.tabs.origins());
+    state.home.publish_tabs(state.tabs.view(), state.tabs.origins());
 }
 
-/// Publish and tell the pages to refetch (tabs mode only: the strips live there).
+/// Publish and tell the pages to refetch (the strips live there).
 pub fn publish(app: &AppHandle) {
-    let multi = app
-        .try_state::<Mutex<AppState>>()
-        .and_then(|state| {
-            state.lock().ok().map(|state| {
-                publish_state(&state);
-                state.multi
-            })
-        })
-        .unwrap_or(false);
-    if multi {
-        tab_webviews::notify_tabs_changed(app);
-    }
+    let Some(state) = app.try_state::<Mutex<AppState>>() else {
+        return;
+    };
+    let Ok(state) = state.lock() else {
+        return;
+    };
+    publish_state(&state);
+    drop(state);
+    tab_webviews::notify_tabs_changed(app);
 }
 
 /// Show the Projects page (`HOME`) or the open project `key`.
@@ -48,9 +43,6 @@ pub fn activate(app: &AppHandle, key: &str) -> Result<(), ActivateError> {
     let state = app.try_state::<Mutex<AppState>>().ok_or(ActivateError::Unknown)?;
     let label = {
         let mut state = state.lock().map_err(|_| ActivateError::Unknown)?;
-        if !state.multi {
-            return Err(ActivateError::Unknown);
-        }
         state.tabs.activate(key)?;
         let label = state
             .tabs
@@ -76,7 +68,7 @@ pub fn close(app: &AppHandle, key: &str) -> CloseOutcome {
         let Ok(state) = state.lock() else {
             return CloseOutcome::Unknown;
         };
-        if !state.multi || !state.tabs.has(key) {
+        if !state.tabs.has(key) {
             return CloseOutcome::Unknown;
         }
         state
@@ -110,9 +102,7 @@ pub fn close(app: &AppHandle, key: &str) -> CloseOutcome {
         (closed, label)
     };
     if let Some(open) = closed.open {
-        if let Surface::Child(label) = &open.surface {
-            tab_webviews::close_child(app, label);
-        }
+        tab_webviews::close_child(app, &open.label);
         // The teardown waits out the SIGTERM grace: off this thread.
         std::thread::spawn(move || drop(open));
     }
@@ -127,7 +117,7 @@ pub fn close_active(app: &AppHandle) {
         state
             .lock()
             .ok()
-            .and_then(|state| state.multi.then(|| state.tabs.active().map(str::to_string)))
+            .map(|state| state.tabs.active().map(str::to_string))
     });
     match active {
         Some(Some(key)) => {
@@ -151,7 +141,7 @@ pub fn cycle(app: &AppHandle, forward: bool) {
         state
             .lock()
             .ok()
-            .and_then(|state| state.multi.then(|| state.tabs.cycle(forward)))
+            .map(|state| state.tabs.cycle(forward))
     });
     if let Some(next) = next {
         let _ = activate(app, &next);
@@ -215,9 +205,6 @@ impl TabActions for ShellTabs {
     fn project_dir(&self, key: &str) -> Option<std::path::PathBuf> {
         let state = self.app.try_state::<Mutex<AppState>>()?;
         let state = state.lock().ok()?;
-        if !state.multi {
-            return None;
-        }
         state.tabs.open_project(key).map(|open| open.project.dir.clone())
     }
 }

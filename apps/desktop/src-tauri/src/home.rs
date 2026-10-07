@@ -168,16 +168,9 @@ impl HomeServer {
 
     /// Publish the projects the window has open and the Studio origins they
     /// serve: the tab strip's data and what token-less Studio requests are
-    /// checked against. Set by lib.rs on every change. A return from the last
-    /// project to the Projects page (tabs off: the window navigated back) skips
-    /// the launch intro on the next page load; the navigation hook also fires
-    /// for the window's first load and for reloads of the Projects page, which
-    /// keep the intro.
+    /// checked against. Set by lib.rs on every change.
     pub fn publish_tabs(&self, view: TabsView, origins: Vec<String>) {
         if let Ok(mut inner) = self.inner.lock() {
-            if !view.enabled && view.tabs.is_empty() && !inner.tabs.tabs.is_empty() {
-                inner.skip_intro = true;
-            }
             inner.tabs = view;
             inner.studio_origins = origins;
         }
@@ -187,14 +180,6 @@ impl HomeServer {
     pub fn set_tab_actions(&self, actions: Arc<dyn TabActions>) {
         if let Ok(mut inner) = self.inner.lock() {
             inner.tab_actions = Some(actions);
-        }
-    }
-
-    /// Help › Welcome to OpenVids… while a project shows: the Projects page
-    /// the window is about to navigate to opens the onboarding on load.
-    pub fn request_onboarding(&self) {
-        if let Ok(mut inner) = self.inner.lock() {
-            inner.pending_onboarding = true;
         }
     }
 
@@ -295,10 +280,9 @@ mod tests {
         String::from_utf8_lossy(&body).contains("\"intro\":true")
     }
 
-    /// What the shell publishes for a window with these projects open (tabs off: one project at most).
-    fn shown(enabled: bool, keys: &[&str]) -> TabsView {
+    /// What the shell publishes for a window with these projects open.
+    fn shown(keys: &[&str]) -> TabsView {
         TabsView {
-            enabled,
             tabs: keys
                 .iter()
                 .map(|key| super::super::tabs::TabInfo {
@@ -312,21 +296,15 @@ mod tests {
     }
 
     #[test]
-    fn intro_plays_on_launch_and_reload_but_not_after_a_project() {
+    fn intro_plays_on_launch_and_reload_and_closing_the_last_tab_does_not_skip_it() {
         let (server, origin) = spawn("intro");
         // Reloading the Projects page keeps the intro, however often it loads.
         assert!(intro_flag(&origin), "cold load plays the intro");
         assert!(intro_flag(&origin), "reloading Projects plays it again");
 
-        // A project was open and the window came back to the Projects page.
-        server.publish_tabs(shown(false, &["project"]), Vec::new());
-        server.publish_tabs(shown(false, &[]), Vec::new());
-        assert!(!intro_flag(&origin), "coming back from a project skips it");
-        assert!(intro_flag(&origin), "the skip applies to that one load only");
-
-        // With tabs the Projects page is never left, so closing the last tab does not skip its next load.
-        server.publish_tabs(shown(true, &["project"]), Vec::new());
-        server.publish_tabs(shown(true, &[]), Vec::new());
+        // The Projects page is never left, so closing the last tab does not skip its next load.
+        server.publish_tabs(shown(&["project"]), Vec::new());
+        server.publish_tabs(shown(&[]), Vec::new());
         assert!(intro_flag(&origin));
     }
 
@@ -471,19 +449,17 @@ mod tests {
         assert_eq!(refused["code"], "unknown_project");
         assert_eq!(refused["error"], "unknown project");
         // Record the open and publish the project as open, prove renaming and
-        // trashing the open project is refused (with tabs the refusal says to close
-        // its tab), then simulate Show All Projects and rename for real.
+        // trashing the open project is refused (the refusal says to close its
+        // tab), then close it and rename for real.
         server.record_open(&dest);
         let my_video = recent_key(&origin, &token, "my-video");
-        server.publish_tabs(shown(false, &[&my_video]), Vec::new());
+        server.publish_tabs(shown(&[&my_video]), Vec::new());
         let refuse = |path: &str, body: serde_json::Value| {
             let (code, refused) = post(&origin, path, Some(&token), body.to_string().as_bytes());
             assert_eq!(code, 400, "{path}");
             serde_json::from_slice::<serde_json::Value>(&refused).unwrap()
         };
         let blocked = serde_json::json!({"id": my_video, "new_name": "blocked"});
-        assert_eq!(refuse("/api/rename", blocked.clone())["code"], "project_in_use");
-        server.publish_tabs(shown(true, &[&my_video]), Vec::new());
         assert_eq!(refuse("/api/rename", blocked)["code"], "project_in_use_tab");
         assert_eq!(
             refuse("/api/trash", serde_json::json!({"id": my_video}))["code"],
@@ -491,7 +467,7 @@ mod tests {
             "the open project is not moved to the Trash under its server"
         );
         assert!(dest.is_dir());
-        server.publish_tabs(shown(false, &[]), Vec::new());
+        server.publish_tabs(shown(&[]), Vec::new());
 
         // Rename moves the folder and keeps meta.json consistent.
         let (code, renamed_body) = post(
@@ -1208,20 +1184,6 @@ if (command === "doctor") {
     }
 
     #[test]
-    fn the_onboarding_request_from_the_menu_reaches_the_page_once() {
-        let (server, origin) = spawn("onboarding-boot");
-        let flag = |origin: &str| {
-            let (_, body) = get(origin, "/", None);
-            let page = String::from_utf8_lossy(&body).into_owned();
-            page.contains("\"openOnboarding\":true")
-        };
-        assert!(!flag(&origin));
-        server.request_onboarding();
-        assert!(flag(&origin), "the page opened after the request gets the flag");
-        assert!(!flag(&origin), "and only that one");
-    }
-
-    #[test]
     fn thumbnails_roundtrip_through_the_server() {
         let (server, origin) = spawn("thumbs");
         let token = server.token_for_test();
@@ -1387,35 +1349,32 @@ if (command === "doctor") {
         }
     }
 
-    /// The tab strip's data and actions: nothing exists with the feature off; with it on the shell's answer
-    /// reaches the page, a Studio origin reaches exactly these endpoints without the token, and every other
-    /// origin or path still needs it.
+    /// The tab strip's data and actions: the shell's answer reaches the page, a Studio origin reaches exactly
+    /// these endpoints without the token, and every other origin or path still needs it.
     #[test]
-    fn the_tab_endpoints_exist_only_with_tabs_on_and_reach_studio_without_the_token() {
+    fn the_tab_endpoints_reach_studio_without_the_token() {
         let (server, origin) = spawn("tabs");
         let token = server.token_for_test();
         let studio = "http://127.0.0.1:5210";
         let fake = std::sync::Arc::new(FakeTabs(Mutex::new(Vec::new())));
         server.set_tab_actions(fake.clone());
 
-        // Off: the strip is empty and nothing can be switched or closed, even with the token.
-        server.publish_tabs(shown(false, &["a"]), vec![studio.to_string()]);
+        // Before the window published anything the list is simply empty, and a Studio origin that is not live
+        // has no grant.
         let (code, body) = get(&origin, "/api/tabs", Some(&token));
         assert_eq!(code, 200);
-        let off: serde_json::Value = serde_json::from_slice(&body).unwrap();
-        assert_eq!((off["enabled"].as_bool(), off["tabs"].as_array().map(Vec::len)), (Some(false), Some(0)));
-        let (code, _) = post(&origin, "/api/tabs/close", Some(&token), br#"{"key":"a"}"#);
-        assert_eq!(code, 404);
+        let empty: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!((empty["active"].as_str(), empty["tabs"].as_array().map(Vec::len)), (Some("home"), Some(0)));
+        assert!(empty.get("enabled").is_none(), "the list has no `enabled` field");
         let (code, _, _) = exchange(&origin, "GET", "/api/tabs", &[("Origin", studio)], b"");
-        assert_eq!(code, 403, "no grant to Studio while the feature is off");
+        assert_eq!(code, 403, "no grant to a Studio origin that is not live");
         assert!(fake.0.lock().unwrap().is_empty());
 
-        // On: the page sees the list; the actions run and their outcomes map to statuses.
-        server.publish_tabs(shown(true, &["a", "starting"]), vec![studio.to_string()]);
+        // The page sees the list; the actions run and their outcomes map to statuses.
+        server.publish_tabs(shown(&["a", "starting"]), vec![studio.to_string()]);
         let (code, body) = get(&origin, "/api/tabs", Some(&token));
         assert_eq!(code, 200);
         let on: serde_json::Value = serde_json::from_slice(&body).unwrap();
-        assert_eq!(on["enabled"], true);
         assert_eq!(on["active"], "home");
         assert_eq!(on["tabs"][0]["key"], "a");
         assert_eq!(on["tabs"][0]["state"], "open");

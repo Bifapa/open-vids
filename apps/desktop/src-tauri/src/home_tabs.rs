@@ -1,6 +1,6 @@
 //! `/api/tabs*`: the data the pages' tab strips draw and the actions they ask for.
 //!
-//! - `GET /api/tabs` — `{ enabled, active, limit, tabs: [{ key, name, state }] }`.
+//! - `GET /api/tabs` — `{ active, limit, tabs: [{ key, name, state }] }`.
 //! - `POST /api/tabs/activate {key}` — show the Projects page (`"home"`) or an open project.
 //! - `POST /api/tabs/close {key}` — close a project's tab (asks first when it is busy).
 //! - `POST /api/tabs/fork {key}` — fork an open project tab's project (`home_fork`, same job and refusals as
@@ -18,7 +18,7 @@ use std::sync::{Arc, Mutex};
 use super::coded_error::CodedError;
 use super::home_api::unknown_project;
 use super::home_routes::{json_field, respond_cors, HomeInner};
-use super::tabs::{ActivateError, CloseOutcome, TabActions, TabsView, HOME};
+use super::tabs::{ActivateError, CloseOutcome, TabActions, HOME};
 
 pub fn owns(path: &str) -> bool {
     path == "/api/tabs" || path.starts_with("/api/tabs/")
@@ -49,15 +49,6 @@ pub fn handle(
     };
     if endpoint_method(path) != Some(method) {
         reply(stream, 404, &serde_json::json!({ "error": "not found" }), cors_origin);
-        return;
-    }
-    // A build without the beta feature has no strip: the endpoints are not there.
-    if !view.enabled {
-        if method == "GET" {
-            reply(stream, 200, &serde_json::json!(disabled(&view)), cors_origin);
-        } else {
-            reply(stream, 404, &serde_json::json!({ "error": "tabs are off" }), cors_origin);
-        }
         return;
     }
     if method == "GET" {
@@ -124,16 +115,6 @@ fn fork(
             reply(stream, 200, &serde_json::json!({ "ok": true, "fork": fork }), cors_origin);
         }
         Err((status, error)) => reply(stream, status, &error.body(), cors_origin),
-    }
-}
-
-/// What a page that asks while the feature is off is told: no strip, no tabs.
-fn disabled(view: &TabsView) -> TabsView {
-    TabsView {
-        enabled: false,
-        active: super::tabs::HOME.to_string(),
-        limit: view.limit,
-        tabs: Vec::new(),
     }
 }
 

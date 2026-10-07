@@ -2,10 +2,11 @@
 //!
 //! A build is on the beta channel when its version carries a semver
 //! pre-release suffix (`0.5.0-beta.1`); everything else is stable. Beta
-//! features (multi-project tabs, `#` project mentions, design systems) are
-//! code on `main` that only a beta build turns on. A debug build turns them on
-//! too, so `desktop:dev` exercises them, and `OPENVIDS_BETA_FEATURES=1` / `=0`
-//! forces them on or off for any build.
+//! features are code on `main` that only a beta build turns on; there are none
+//! at the moment (every earlier one has graduated to stable), but the
+//! mechanism stays for the next. A debug build turns beta features on too, so
+//! `desktop:dev` exercises them, and `OPENVIDS_BETA_FEATURES=1` / `=0` forces
+//! them on or off for any build.
 //!
 //! The shell tells its pages: Studio gets `openvidsChannel=beta` in its URL
 //! (`sidecar::studio_url`), the Projects page `betaFeatures` in `OV_BOOT`, and the Studio server (and the agent

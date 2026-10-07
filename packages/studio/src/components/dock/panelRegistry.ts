@@ -1,5 +1,4 @@
 import type { Direction } from "dockview-react";
-import { isBetaFeatureEnabled, type BetaFeatureId } from "../../betaFeatures";
 import type { TranslationKey } from "../../i18n";
 
 export const PANEL_IDS = [
@@ -32,8 +31,6 @@ export interface PanelDefinition {
   reopen: { near: PanelId; direction: Direction };
   /** Content stays mounted while its tab is hidden (the preview iframe must not reload). */
   keepMounted?: true;
-  /** Only on a build with this beta feature on: otherwise the panel is not offered in the Window menu. */
-  beta?: BetaFeatureId;
 }
 
 export const PANEL_DEFINITIONS = {
@@ -112,7 +109,7 @@ export const PANEL_DEFINITIONS = {
     reopen: { near: "design", direction: "within" },
   },
   /**
-   * Beta. Not in the default layout: Window > Voiceover, the Media library's Voice group and the voice clip's
+   * Not in the default layout: Window > Voiceover, the Media library's Voice group and the voice clip's
    * inspector open it. It is the project's script (a long list of lines with takes), the counterpart of the
    * inspector for the whole voiceover, so it sits as a tab beside Design in the right column.
    */
@@ -120,7 +117,6 @@ export const PANEL_DEFINITIONS = {
     title: "shell.dock.panel.voiceover",
     zone: "right",
     reopen: { near: "design", direction: "within" },
-    beta: "voiceover",
   },
   chat: {
     title: "shell.dock.panel.chat",
@@ -132,12 +128,6 @@ export const PANEL_DEFINITIONS = {
 
 export function isPanelId(value: unknown): value is PanelId {
   return typeof value === "string" && (PANEL_IDS as readonly string[]).includes(value);
-}
-
-/** Whether the panel is offered on this build: a beta panel only with its feature on. */
-export function isPanelAvailable(id: PanelId): boolean {
-  const definition: PanelDefinition = PANEL_DEFINITIONS[id];
-  return definition.beta === undefined || isBetaFeatureEnabled(definition.beta);
 }
 
 export function panelsInZone(zone: PanelZone): PanelId[] {

@@ -32,7 +32,7 @@ function voiceBaseTools(agent: AgentId): VoiceToolName[] {
 }
 
 /**
- * Which voice tools an agent gets. Both tools exist only when the runtime has a voice host (the beta flag). The
+ * Which voice tools an agent gets. Both tools exist only when the runtime has a voice host. The
  * Director may ask for the voice; Audio asks for it and generates the voiceover. When Audio is off in the chat the
  * Director also gets `generate_voiceover` (the work moves to it, under the same approvals), see `withInheritedTools`.
  * A specialist only gets them when it is on the team; Jev and the other specialists never do.

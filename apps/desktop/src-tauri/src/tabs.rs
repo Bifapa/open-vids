@@ -3,7 +3,7 @@
 //!
 //! The key is `recents::project_key` (16 hex of the SHA-256 of the folder's
 //! path): the folder name is not unique, the key is. Everything a project owns
-//! lives in its slot — the open gate (so two projects open at once and a
+//! lives in its slot — the open generation (so two projects open at once and a
 //! second open of the same project supersedes only its own), the Studio
 //! sidecar, the origin it serves and the webview showing it — so closing one
 //! tab cannot touch another's server.
@@ -27,59 +27,6 @@ pub const HOME: &str = "home";
 /// agent runtime (about 500 MB once they start), so opening beyond this asks.
 pub const SOFT_LIMIT: usize = 6;
 
-/// Bookkeeping for opening one project without holding the app state across
-/// the slow part. A sidecar start waits on a port handshake and a readiness
-/// poll (up to about 105 s) and a teardown waits out a SIGTERM grace; neither
-/// may run under the lock the main-thread hooks (navigation, menus, quit)
-/// take. An open therefore takes what it replaces out, releases the lock,
-/// starts the replacement, and commits only if no newer open of the same
-/// project began meanwhile.
-#[derive(Debug, Default)]
-pub struct OpenGate {
-    generation: u64,
-    /// The window has navigated to the committed Studio origin, so a
-    /// navigation back to the home origin really leaves a project. Before
-    /// that (the committed server is not on screen yet) a home navigation
-    /// is a reload of the Projects page, not a close. Single-project mode only:
-    /// with tabs a project leaves by closing its tab.
-    studio_shown: bool,
-}
-
-impl OpenGate {
-    /// A new open (numbered by the caller, always higher than any before)
-    /// supersedes every open of this project still in flight.
-    fn begin(&mut self, generation: u64) {
-        self.generation = generation;
-    }
-
-    pub fn is_current(&self, generation: u64) -> bool {
-        self.generation == generation
-    }
-
-    /// The window navigated to the committed Studio server.
-    pub fn studio_navigated(&mut self) {
-        self.studio_shown = true;
-    }
-
-    /// The window navigated to the home origin: whether that closes the
-    /// project on screen (and so the server must go). A home navigation that
-    /// is only a reload, or lands before the window ever showed the new
-    /// server, closes nothing.
-    pub fn home_navigated(&mut self) -> bool {
-        std::mem::take(&mut self.studio_shown)
-    }
-}
-
-/// Where a project's page lives.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Surface {
-    /// The window's own webview: single-project mode navigates it between the
-    /// Projects page and Studio.
-    Main,
-    /// A child webview of the window with this label (tabs mode).
-    Child(String),
-}
-
 /// A project that is open: its server, the origin it serves and its page.
 pub struct OpenProject<S> {
     pub project: Project,
@@ -91,11 +38,13 @@ pub struct OpenProject<S> {
     /// whole process tree. `None` in dev, where one Vite server serves every
     /// project.
     pub _studio: Option<S>,
-    pub surface: Surface,
+    /// The label of the child webview showing the project's page.
+    pub label: String,
 }
 
 struct Slot<S> {
-    gate: OpenGate,
+    /// The newest open of the project that began (`Tabs::begin`).
+    generation: u64,
     open: Option<OpenProject<S>>,
     /// What the strip calls the project while it is still opening.
     name: String,
@@ -179,8 +128,6 @@ pub struct TabInfo {
 /// The tab list as the pages see it (`GET /api/tabs`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct TabsView {
-    /// Whether the tab strip is drawn at all (the beta feature is on).
-    pub enabled: bool,
     pub active: String,
     pub limit: usize,
     pub tabs: Vec<TabInfo>,
@@ -189,7 +136,6 @@ pub struct TabsView {
 impl Default for TabsView {
     fn default() -> Self {
         Self {
-            enabled: false,
             active: HOME.to_string(),
             limit: SOFT_LIMIT,
             tabs: Vec::new(),
@@ -230,12 +176,12 @@ impl<S> Tabs<S> {
         self.generation += 1;
         let generation = self.generation;
         let slot = self.slots.entry(key.to_string()).or_insert_with(|| Slot {
-            gate: OpenGate::default(),
+            generation,
             open: None,
             name: name.to_string(),
             pending_design: None,
         });
-        slot.gate.begin(generation);
+        slot.generation = generation;
         generation
     }
 
@@ -244,7 +190,7 @@ impl<S> Tabs<S> {
     pub fn is_current(&self, key: &str, generation: u64) -> bool {
         self.slots
             .get(key)
-            .is_some_and(|slot| slot.gate.is_current(generation))
+            .is_some_and(|slot| slot.generation == generation)
     }
 
     /// An open of a project that is not open yet failed: its tab goes away.
@@ -254,7 +200,7 @@ impl<S> Tabs<S> {
         let abandoned = self
             .slots
             .get(key)
-            .is_some_and(|slot| slot.open.is_none() && slot.gate.is_current(generation));
+            .is_some_and(|slot| slot.open.is_none() && slot.generation == generation);
         if abandoned {
             self.forget(key);
         }
@@ -263,9 +209,9 @@ impl<S> Tabs<S> {
     /// An open of `key` ended in failure: whether that failure is this open's
     /// to report (its tab goes), or the open was superseded meanwhile. A
     /// superseded open owns nothing, but when its slot is gone with no newer
-    /// open of the project (a single-project open took every slot, the tab was
-    /// closed while it started) its "opening" phase has no owner either and
-    /// the caller must clear it.
+    /// open of the project (the tab was closed while it started, quit took
+    /// every slot) its "opening" phase has no owner either and the caller
+    /// must clear it.
     pub fn fail(&mut self, key: &str, began: Option<u64>) -> FailedOpen {
         if let Some(generation) = began {
             if !self.is_current(key, generation) {
@@ -288,7 +234,7 @@ impl<S> Tabs<S> {
         open: OpenProject<S>,
     ) -> Result<Option<OpenProject<S>>, OpenProject<S>> {
         match self.slots.get_mut(key) {
-            Some(slot) if slot.gate.is_current(generation) => {
+            Some(slot) if slot.generation == generation => {
                 slot.name = open.project.id.clone();
                 Ok(slot.open.replace(open))
             }
@@ -306,15 +252,10 @@ impl<S> Tabs<S> {
             return DesignRequest::NoTab;
         };
         match slot.open.as_ref() {
-            Some(OpenProject {
-                surface: Surface::Child(label),
-                url,
-                ..
-            }) => DesignRequest::Navigate {
+            Some(OpenProject { label, url, .. }) => DesignRequest::Navigate {
                 label: label.clone(),
                 url: with_design_intent(url.clone(), Some(design)),
             },
-            Some(_) => DesignRequest::NoTab,
             None => {
                 slot.pending_design = Some(design);
                 DesignRequest::Pending
@@ -362,22 +303,9 @@ impl<S> Tabs<S> {
         self.open_project(key).map(|open| open.origin.as_str())
     }
 
-    /// The webview label of the tab `key` lives in (tabs mode).
+    /// The webview label of the tab `key` lives in.
     pub fn child_label(&self, key: &str) -> Option<&str> {
-        match &self.open_project(key)?.surface {
-            Surface::Child(label) => Some(label.as_str()),
-            Surface::Main => None,
-        }
-    }
-
-    /// The key of the project whose Studio serves `origin` (single mode: the
-    /// window's one project; dev serves every project from one origin, so it
-    /// names the first of them).
-    pub fn key_of_origin(&self, origin: &str) -> Option<&str> {
-        self.order
-            .iter()
-            .find(|key| self.origin_of(key) == Some(origin))
-            .map(String::as_str)
+        self.open_project(key).map(|open| open.label.as_str())
     }
 
     /// Every distinct origin the open projects serve (dev serves them all from
@@ -476,33 +404,9 @@ impl<S> Tabs<S> {
             .collect()
     }
 
-    /// The window navigated to the committed Studio of `key` (single mode).
-    pub fn studio_navigated(&mut self, key: &str) {
-        if let Some(slot) = self.slots.get_mut(key) {
-            slot.gate.studio_navigated();
-        }
-    }
-
-    /// The window navigated to the home origin (single mode): the project it
-    /// was really showing closes, once. A reload of the Projects page, or a
-    /// home load before the window showed the new server, closes nothing.
-    pub fn home_navigated(&mut self) -> Vec<OpenProject<S>> {
-        let shown: Vec<String> = self
-            .slots
-            .iter_mut()
-            .filter_map(|(key, slot)| slot.gate.home_navigated().then(|| key.clone()))
-            .collect();
-        shown
-            .iter()
-            .filter_map(|key| self.close(key))
-            .filter_map(|closed| closed.open)
-            .collect()
-    }
-
     /// The tab list for the pages.
-    pub fn view(&self, enabled: bool) -> TabsView {
+    pub fn view(&self) -> TabsView {
         TabsView {
-            enabled,
             active: self.active.clone().unwrap_or_else(|| HOME.to_string()),
             limit: SOFT_LIMIT,
             tabs: self
@@ -563,7 +467,7 @@ mod tests {
             origin: origin.to_string(),
             url: format!("{origin}/#project/{id}"),
             _studio: Some(Server(Arc::clone(torn))),
-            surface: Surface::Child(format!("project-{id}")),
+            label: format!("project-{id}"),
         }
     }
 
@@ -621,7 +525,7 @@ mod tests {
         assert!(tabs.is_opening("a"));
         tabs.abandon("a", generation);
         assert!(!tabs.has("a"));
-        assert!(tabs.view(true).tabs.is_empty());
+        assert!(tabs.view().tabs.is_empty());
 
         opened(&mut tabs, "b", &torn);
         let restart = tabs.begin("b", "b");
@@ -654,7 +558,7 @@ mod tests {
         assert_eq!(tabs.activate("b"), Err(ActivateError::Opening));
         assert_eq!(tabs.activate("zzz"), Err(ActivateError::Unknown));
         assert_eq!(tabs.activate(HOME), Ok(()));
-        let view = tabs.view(true);
+        let view = tabs.view();
         assert_eq!(view.active, HOME);
         let states: Vec<_> = view.tabs.iter().map(|t| (t.key.as_str(), t.state)).collect();
         assert_eq!(states, [("a", TabState::Open), ("b", TabState::Opening)]);
@@ -682,21 +586,6 @@ mod tests {
     }
 
     #[test]
-    fn single_project_mode_closes_the_project_the_window_showed_when_it_goes_home() {
-        let torn = Arc::new(AtomicUsize::new(0));
-        let mut tabs = Tabs::default();
-        opened(&mut tabs, "a", &torn);
-        // The server is committed but the window has not reached it yet: a
-        // reload of the Projects page landing now must not take it.
-        assert!(tabs.home_navigated().is_empty());
-        tabs.studio_navigated("a");
-        let closed = tabs.home_navigated();
-        assert_eq!(closed.len(), 1);
-        assert!(tabs.home_navigated().is_empty(), "a second home load (a reload) closes nothing");
-        assert!(!tabs.has("a"));
-    }
-
-    #[test]
     fn cycling_walks_the_open_tabs_through_the_projects_page() {
         let torn = Arc::new(AtomicUsize::new(0));
         let mut tabs = Tabs::default();
@@ -712,7 +601,7 @@ mod tests {
     #[test]
     fn a_superseded_open_whose_slot_is_gone_must_clear_its_phase_but_one_with_a_newer_open_must_not() {
         let torn = Arc::new(AtomicUsize::new(0));
-        // Single-project mode: B's open took every slot (A's included) while A's sidecar started.
+        // Quit took every slot (A's included) while A's sidecar started, then another open began.
         let mut tabs: Tabs<Server> = Tabs::default();
         let a = tabs.begin("a", "a");
         drop(tabs.take_all());

@@ -62,7 +62,7 @@ describe("design tool availability", () => {
     expect(toolsOf("director", TEAM, null)).not.toContain("video_palette");
   });
 
-  it("offers nothing without a design host, the beta flag being off", () => {
+  it("offers nothing without a design host", () => {
     for (const agent of AGENTS) {
       for (const action of [null, ...DESIGN_ACTIONS]) {
         expect(

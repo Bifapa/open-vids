@@ -1,6 +1,6 @@
-/* Project tabs on the Projects page (tabs.js, beta feature `projectTabs`): the 32 px tab strip under the
-   titlebar, and the marks a project card wears while its project opens or is open in a tab. Nothing here
-   applies unless tabs.js mounts the strip (`html.ov-has-tabs`) or home.js marks a card. */
+/* Project tabs on the Projects page (tabs.js): the 32 px tab strip under the
+   titlebar, and the marks a project card wears while its project opens or is open in a tab. The strip is
+   mounted by tabs.js (`html.ov-has-tabs`) while a project tab is open; home.js marks the cards. */
 
 /* ---- The strip: a window grid row of its own between the 52 px titlebar and the content ---- */
 html.ov-has-tabs .window {

@@ -379,8 +379,8 @@
     }
     return boot && typeof boot === "object" ? boot : {};
   }
-  /* Beta features (Rust `channel::beta_features_enabled()` via OV_BOOT): on in
-     beta and debug builds. Pages gate beta-only UI on OV.betaFeatures(). */
+  /* Beta mechanism (Rust `channel::beta_features_enabled()` via OV_BOOT): on in beta and debug
+     builds. A page gates UI that only a beta build shows on OV.betaFeatures(); none does at the moment. */
   function betaFeatures() {
     return bootData().betaFeatures === true;
   }

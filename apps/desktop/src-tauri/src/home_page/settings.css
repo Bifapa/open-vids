@@ -980,7 +980,7 @@ html:lang(ru) .st-agents .seg.text button {
   justify-content: flex-end;
 }
 
-/* ---- Voice (beta): provider fields, the key line, saved voices ---- */
+/* ---- Voice: provider fields, the key line, saved voices ---- */
 .st-vfield {
   display: grid;
   gap: 4px;

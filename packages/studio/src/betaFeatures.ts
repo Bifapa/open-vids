@@ -2,18 +2,14 @@
  * Beta features: code on `main` that only a beta build of the desktop turns on (debug builds too, and
  * `OPENVIDS_BETA_FEATURES=1|0` forces it; `apps/desktop/src-tauri/src/channel.rs`). The desktop says so with
  * `openvidsChannel=beta` in Studio's URL; without it (stable builds, a plain browser) every beta feature is off.
+ * No feature is staged right now: a new one is listed in `BETA_FEATURES` and gated with `isBetaFeatureEnabled(id)`.
  */
 
 /** URL parameter the desktop sets when beta features are on. */
 export const OPENVIDS_CHANNEL_PARAM = "openvidsChannel";
 
-/** Every beta feature, by id. A feature leaves this list when it ships on the stable channel. */
-export const BETA_FEATURES = [
-  "projectTabs",
-  "projectMentions",
-  "designSystems",
-  "voiceover",
-] as const;
+/** Every staged beta feature, by id. A feature leaves this list when it ships on the stable channel. */
+export const BETA_FEATURES = [] as const;
 
 export type BetaFeatureId = (typeof BETA_FEATURES)[number];
 

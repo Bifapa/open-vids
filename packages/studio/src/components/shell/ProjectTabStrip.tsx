@@ -66,7 +66,7 @@ interface ProjectTabStripViewProps {
 }
 
 /**
- * The strip of open projects under the titlebar (beta project tabs): Projects, one tab per open project, and
+ * The strip of open projects under the titlebar: Projects, one tab per open project, and
  * a + that goes back to Projects to pick another. It is the same strip the Projects page draws, so the
  * two look alike whichever page is in front. A project still opening shows a spinner and cannot be
  * switched to or closed. `data-keyboard-owner` keeps Studio's global shortcuts (Delete, Space, arrows) out.
@@ -246,11 +246,10 @@ interface ProjectTabStripProps {
 }
 
 /**
- * The strip under the Studio titlebar when project tabs are on (beta, in the desktop, this page has a
- * tab key and the shell says tabs are enabled); nothing at all otherwise, so the layout is the one
- * Studio always had. This page is only visible while it is the active tab, so its own tab is the selected one.
- * A fork the shell starts needs no reply here (the window moves to the Projects page, which shows the
- * copy's progress); one it refuses is a toast.
+ * The strip under the Studio titlebar when this page is in the desktop and has a tab key; nothing at all
+ * otherwise, so the layout is the one Studio always had. This page is only visible while it is the active tab,
+ * so its own tab is the selected one. A fork the shell starts needs no reply here (the window moves to the
+ * Projects page, which shows the copy's progress); one it refuses is a toast.
  */
 export function ProjectTabStrip({ showToast }: ProjectTabStripProps) {
   const projectTabs = useProjectTabs();

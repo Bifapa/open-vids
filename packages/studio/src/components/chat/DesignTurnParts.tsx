@@ -1,7 +1,6 @@
 import { useMemo, type ReactNode } from "react";
 import { ArrowsClockwise, Check, LinkSimple, Palette } from "@phosphor-icons/react";
 import type { ChatState, TurnSummary } from "@hyperframes/agent-protocol";
-import { isBetaFeatureEnabled } from "../../betaFeatures";
 import { useDesignStore, useDesignStoreApi } from "../../design/designContext";
 import { savedDesignsOfTurn, type SavedDesign } from "../../design/designSaved";
 import { useTranslation } from "../../i18n";
@@ -11,7 +10,7 @@ import { chatMeasureWide, noteBox } from "./chatStyles";
 /** «Design system · create» beside «You» on a prompt that started a design action (like the Story tag). */
 export function DesignTurnTag({ turn }: { turn: TurnSummary | undefined }) {
   const { t } = useTranslation();
-  if (!turn?.designAction || !isBetaFeatureEnabled("designSystems")) return null;
+  if (!turn?.designAction) return null;
   return (
     <Badge size="sm" data-testid="design-turn-tag">
       {t(
@@ -33,7 +32,7 @@ export function DesignSavedCards({ chat, turn }: { chat: ChatState; turn: TurnSu
     () => (turn.status === "completed" ? savedDesignsOfTurn(chat, turn) : []),
     [chat, turn],
   );
-  if (saved.length === 0 || !isBetaFeatureEnabled("designSystems")) return null;
+  if (saved.length === 0) return null;
   return (
     <>
       {saved.map((design) => (

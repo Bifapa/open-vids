@@ -4,7 +4,7 @@
  * The design surface's dialogs: "Create design system" starts a normal chat turn with the design action for each
  * source (and offers "another project" only when the host lists projects), the one-shot address parameter opens it,
  * "Edit with the agent" edits a library system, the preview frame runs no scripts, and the state is read again when
- * a turn ends. Nothing renders or reads the address with the beta flag off.
+ * a turn ends.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentApiError } from "../agent/agentClient";
@@ -38,7 +38,6 @@ import {
   pressAndSettle,
   settle,
   typeInto,
-  visitStudio,
 } from "./designDom.testHelpers";
 import { useDesignUi } from "./designUiStore";
 
@@ -112,7 +111,7 @@ async function chooseSource(value: string): Promise<void> {
 }
 
 beforeEach(() => {
-  visitStudio("beta");
+  window.history.replaceState(null, "", "/");
   world.files = [];
   world.filesLoaded = true;
   world.capabilities = { externalProjects: null };
@@ -124,19 +123,7 @@ afterEach(() => {
   cleanupMounted();
   useDesignUi.setState({ dialog: null });
   useDockLayoutStore.setState({ pendingWorkspace: null, pendingActivation: null });
-  visitStudio("");
-});
-
-describe("with the beta flag off", () => {
-  it("renders nothing, leaves the address alone and reads nothing", async () => {
-    window.history.replaceState(null, "", "/?openvidsDesign=create#project/demo");
-    const { host, designClient } = mountDesignHost();
-    await settle();
-    expect(host.innerHTML).toBe("");
-    expect(window.location.search).toBe("?openvidsDesign=create");
-    expect(useDesignUi.getState().dialog).toBeNull();
-    expect(designClient.getProject).not.toHaveBeenCalled();
-  });
+  window.history.replaceState(null, "", "/");
 });
 
 describe("the one-shot address parameter", () => {
@@ -144,18 +131,18 @@ describe("the one-shot address parameter", () => {
     window.history.replaceState(
       null,
       "",
-      "/?openvidsChannel=beta&openvidsDesign=create&openvidsDesignSource=website#project/demo",
+      "/?openvidsDesign=create&openvidsDesignSource=website#project/demo",
     );
     mountDesignHost();
     await settle();
     expect(dialog()?.textContent).toContain("Create design system");
     expect(sourceRadio("website")?.checked).toBe(true);
-    expect(window.location.search).toBe("?openvidsChannel=beta");
+    expect(window.location.search).toBe("");
     expect(window.location.hash).toBe("#project/demo");
   });
 
   it("opens on a brief when no source came with it", async () => {
-    window.history.replaceState(null, "", "/?openvidsChannel=beta&openvidsDesign=create");
+    window.history.replaceState(null, "", "/?openvidsDesign=create");
     mountDesignHost();
     await settle();
     expect(sourceRadio("scratch")?.checked).toBe(true);

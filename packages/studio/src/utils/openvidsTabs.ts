@@ -1,5 +1,5 @@
 /**
- * Project tabs (beta feature `projectTabs`): the desktop shell keeps several projects open in one window,
+ * Project tabs: the desktop shell keeps several projects open in one window,
  * each its own webview, and draws no chrome of its own. The pages draw the tab strip from what the shell's
  * home server answers, and ask it to switch, close or fork a tab. Studio is a different loopback origin than the
  * home server and holds no home token, so it talks to the four `/api/tabs*` endpoints with a plain
@@ -10,7 +10,7 @@
 import { isRecord } from "@hyperframes/agent-protocol";
 import { isValidOpenvidsHomeOrigin } from "./openvidsHost";
 
-/** URL parameter the shell sets on a project webview (beta only): this page's own tab key. */
+/** URL parameter the shell sets on a project webview: this page's own tab key. */
 export const OPENVIDS_TAB_PARAM = "openvidsTab";
 
 /** Window event the shell dispatches in every page whenever the tab list changed. */
@@ -29,8 +29,6 @@ export interface ProjectTab {
 }
 
 export interface TabsSnapshot {
-  /** False when the beta is off or the page is not in the desktop: draw nothing. */
-  enabled: boolean;
   /** `"home"` or a project key. */
   active: string;
   /** Soft memory limit of open projects; the shell itself asks the user beyond it. */
@@ -62,14 +60,11 @@ function parseProjectTab(value: unknown): ProjectTab | null {
 }
 
 /**
- * Read the answer of `GET /api/tabs`. `{ enabled: false }` is a complete answer on its own (the rest is
- * ignored); an enabled one needs every field, with every tab well-formed and no key repeated. Anything
- * else is null, never a half-trusted snapshot.
+ * Read the answer of `GET /api/tabs`: it needs every field, with every tab well-formed and no key repeated.
+ * Anything else is null, never a half-trusted snapshot.
  */
 export function parseTabsSnapshot(value: unknown): TabsSnapshot | null {
   if (!isRecord(value)) return null;
-  if (value.enabled === false) return { enabled: false, active: HOME_TAB_KEY, limit: 0, tabs: [] };
-  if (value.enabled !== true) return null;
   const { active, limit, tabs: rawTabs } = value;
   if (typeof active !== "string" || active === "") return null;
   if (typeof limit !== "number" || !Number.isInteger(limit) || limit < 0) return null;
@@ -82,13 +77,12 @@ export function parseTabsSnapshot(value: unknown): TabsSnapshot | null {
     seen.add(tab.key);
     tabs.push(tab);
   }
-  return { enabled: true, active, limit, tabs };
+  return { active, limit, tabs };
 }
 
 /** Whether two answers describe the same strip, so a poll that changed nothing does not re-render it. */
 export function sameTabsSnapshot(a: TabsSnapshot, b: TabsSnapshot): boolean {
   return (
-    a.enabled === b.enabled &&
     a.active === b.active &&
     a.limit === b.limit &&
     a.tabs.length === b.tabs.length &&

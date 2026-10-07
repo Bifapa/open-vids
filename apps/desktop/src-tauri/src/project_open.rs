@@ -3,16 +3,11 @@
 //!
 //! The embedded server is single-project by construction — `createStudioServer`
 //! takes one `projectDir` — so every open project has a sidecar of its own, on
-//! its own loopback origin. With project tabs (`AppState::multi`) the page is a
-//! child webview next to the others and nothing else is touched; without them
-//! the window shows one project at a time, and opening another stops the first
-//! (which also stops the previous process group's Chrome instances from
-//! lingering). The home server is untouched either way: it keeps serving the
-//! Projects page for the way back.
+//! its own loopback origin. The page is a child webview next to the others and
+//! nothing else is touched; the home server keeps serving the Projects page.
 //!
 //! `AppState` is locked only for short reads and the final commit, never
-//! across the teardown of a previous server or the start of the new one (see
-//! `tabs::OpenGate`).
+//! across the start of the new server (see `tabs::Tabs::begin`).
 
 use std::path::Path;
 use std::sync::Mutex;
@@ -21,7 +16,7 @@ use tauri::Manager;
 
 use super::coded_error::CodedError;
 use super::tab_webviews::{self, ChildSpec};
-use super::tabs::{DesignRequest, OpenProject, Surface, SOFT_LIMIT};
+use super::tabs::{DesignRequest, OpenProject, SOFT_LIMIT};
 use super::{
     channel, logfile, platform, prefs, recents, resource_root, sidecar, structure, tab_actions,
     thumbnails, window_frame, AppState, Mode,
@@ -81,7 +76,7 @@ fn open_inner(
     let poisoned = || CodedError::plain("app_state_poisoned", "app state is poisoned");
     let app_state = app.state::<Mutex<AppState>>();
 
-    let (mode, multi, home_origin, home_link, existing, tab_count, clashes) = {
+    let (mode, home_origin, home_link, existing, tab_count, clashes) = {
         let state = app_state.lock().map_err(|_| poisoned())?;
         let existing = if state.tabs.open_project(key).is_some() {
             Existing::Open
@@ -92,7 +87,6 @@ fn open_inner(
         };
         (
             state.mode,
-            state.multi,
             state.home_origin.clone(),
             state.home.link(),
             existing,
@@ -100,45 +94,43 @@ fn open_inner(
             state.tabs.name_taken_by_other(key, &project.id),
         )
     };
-    if multi {
-        match existing {
-            Existing::Open => {
-                // Reopening focuses the tab it already has; a design-system
-                // creation asked for by the same open then starts in that page.
-                tab_actions::activate(app, key)
-                    .map_err(|_| CodedError::plain("tab_unknown", "that tab is not open"))?;
-                if let Some(design) = design {
-                    apply_design(app, key, design);
-                }
-                clear_phase(app, key);
-                return Ok(None);
+    match existing {
+        Existing::Open => {
+            // Reopening focuses the tab it already has; a design-system
+            // creation asked for by the same open then starts in that page.
+            tab_actions::activate(app, key)
+                .map_err(|_| CodedError::plain("tab_unknown", "that tab is not open"))?;
+            if let Some(design) = design {
+                apply_design(app, key, design);
             }
-            Existing::Starting => {
-                // The open under way shows the project; the intent joins it at its commit.
-                if let Some(design) = design {
-                    apply_design(app, key, design);
-                }
-                return Ok(None);
-            }
-            Existing::No => {}
-        }
-        // Each open project runs its own server, Chrome and agent runtime.
-        if tab_count >= SOFT_LIMIT && !tab_actions::confirm_open_beyond_limit(tab_count) {
             clear_phase(app, key);
             return Ok(None);
         }
-        // Dev serves every project from one Vite server by symlinked folder
-        // name: two folders of the same name would show one project twice.
-        if mode == Mode::Dev && clashes {
-            return Err(CodedError::new(
-                "project_name_clash",
-                format!("another open project is also called {:?}", project.id),
-                serde_json::json!({ "name": project.id }),
-            ));
+        Existing::Starting => {
+            // The open under way shows the project; the intent joins it at its commit.
+            if let Some(design) = design {
+                apply_design(app, key, design);
+            }
+            return Ok(None);
         }
+        Existing::No => {}
+    }
+    // Each open project runs its own server, Chrome and agent runtime.
+    if tab_count >= SOFT_LIMIT && !tab_actions::confirm_open_beyond_limit(tab_count) {
+        clear_phase(app, key);
+        return Ok(None);
+    }
+    // Dev serves every project from one Vite server by symlinked folder
+    // name: two folders of the same name would show one project twice.
+    if mode == Mode::Dev && clashes {
+        return Err(CodedError::new(
+            "project_name_clash",
+            format!("another open project is also called {:?}", project.id),
+            serde_json::json!({ "name": project.id }),
+        ));
     }
     // Everything that can fail before anything is replaced is resolved first,
-    // so such a failure leaves the window on a working project.
+    // so such a failure leaves the window as it was.
     let production = match mode {
         Mode::Dev => None,
         Mode::Prod => {
@@ -157,20 +149,16 @@ fn open_inner(
         // runtime lookup in between: another open of this project may have
         // begun, or finished, meanwhile. It owns the tab; this one has nothing
         // left to do (a finished one still wants focusing).
-        if multi && state.tabs.has(key) {
+        if state.tabs.has(key) {
             Err(state.tabs.open_project(key).is_some())
         } else {
-            // Without tabs the window shows one project: the previous server
-            // goes first (the new one must be able to bind, and the old Chrome
-            // instances must go with it). The home server stays up.
-            let previous = if multi { Vec::new() } else { state.tabs.take_all() };
             let generation = state.tabs.begin(key, &project.id);
             tab_actions::publish_state(&state);
-            Ok((generation, previous))
+            Ok(generation)
         }
     };
-    let (generation, previous) = match begun {
-        Ok(begun) => begun,
+    let generation = match begun {
+        Ok(generation) => generation,
         Err(already_open) => {
             if already_open {
                 let _ = tab_actions::activate(app, key);
@@ -184,11 +172,7 @@ fn open_inner(
     };
     *began = Some(generation);
     // The opening tab shows in the strips.
-    if multi {
-        tab_webviews::notify_tabs_changed(app);
-    }
-    // The teardown waits out the SIGTERM grace: not under the lock.
-    drop(previous);
+    tab_webviews::notify_tabs_changed(app);
 
     let (studio_origin, studio) = match (mode, production) {
         (Mode::Prod, Some((launcher, bun, cli))) => {
@@ -231,56 +215,49 @@ fn open_inner(
         workspace.as_deref(),
         window_frame(),
         channel::beta_features_enabled(),
-        multi.then_some(key),
+        key,
     );
     // The address the page is restored to when a foreign document takes it over:
     // without the open intent, which would otherwise be replayed.
     let base_target = target.clone();
     // The open intent (`openvidsDesign=create`, with its source) joins the query, after the channel.
     let target = sidecar::with_design_intent(target, design);
-    // With tabs the project's page is its own webview, created now so a failed
-    // creation still leaves the state untouched. It comes up on top and shown;
-    // the others are hidden once the project is committed.
-    let surface = if multi {
-        let url = target.parse::<tauri::Url>().map_err(|e| {
-            CodedError::new(
-                "invalid_url",
-                format!("built an invalid URL {target:?}: {e}"),
-                serde_json::json!({ "url": target, "detail": e.to_string() }),
-            )
-        })?;
-        let label = tab_webviews::child_label(key, generation);
-        tab_webviews::create_child(
-            app,
-            ChildSpec {
-                key: key.to_string(),
-                label: label.clone(),
-                url,
-                origin: studio_origin.clone(),
-                home_origin,
-                background: super::window_background(app),
-            },
-        )?;
-        Surface::Child(label)
-    } else {
-        Surface::Main
-    };
+    // The project's page is its own webview, created now so a failed creation
+    // still leaves the state untouched. It comes up on top and shown; the
+    // others are hidden once the project is committed.
+    let url = target.parse::<tauri::Url>().map_err(|e| {
+        CodedError::new(
+            "invalid_url",
+            format!("built an invalid URL {target:?}: {e}"),
+            serde_json::json!({ "url": target, "detail": e.to_string() }),
+        )
+    })?;
+    let label = tab_webviews::child_label(key, generation);
+    tab_webviews::create_child(
+        app,
+        ChildSpec {
+            key: key.to_string(),
+            label: label.clone(),
+            url,
+            origin: studio_origin.clone(),
+            home_origin,
+            background: super::window_background(app),
+        },
+    )?;
 
     let open = OpenProject {
         project: project.clone(),
         origin: studio_origin,
         url: base_target.clone(),
         _studio: studio,
-        surface: surface.clone(),
+        label: label.clone(),
     };
     let committed = {
         let mut state = app_state.lock().map_err(|_| poisoned())?;
         match state.tabs.commit(key, generation, open) {
             Ok(replaced) => {
                 state.home.record_open(&project.dir);
-                if multi {
-                    let _ = state.tabs.activate(key);
-                }
+                let _ = state.tabs.activate(key);
                 // An intent that arrived while the server started.
                 let pending = state.tabs.take_pending_design(key);
                 tab_actions::publish_state(&state);
@@ -300,9 +277,7 @@ fn open_inner(
         Err(open) => {
             // A newer open of this project owns it now, or its tab was closed:
             // this one's page and server go.
-            if let Surface::Child(label) = &open.surface {
-                tab_webviews::close_child(app, label);
-            }
+            tab_webviews::close_child(app, &open.label);
             drop(open);
             return Ok(None);
         }
@@ -310,24 +285,10 @@ fn open_inner(
     let (replaced, pending_design) = replaced;
     drop(replaced);
 
-    match &surface {
-        Surface::Child(label) => {
-            tab_webviews::show(app, Some(label));
-            tab_webviews::notify_tabs_changed(app);
-            if let Some(design) = pending_design {
-                navigate_child(app, label, &sidecar::with_design_intent(base_target, Some(design)));
-            }
-        }
-        Surface::Main => {
-            let url = target.parse::<tauri::Url>().map_err(|e| {
-                CodedError::new(
-                    "invalid_url",
-                    format!("built an invalid URL {target:?}: {e}"),
-                    serde_json::json!({ "url": target, "detail": e.to_string() }),
-                )
-            })?;
-            main_webview_navigate(app, url)?;
-        }
+    tab_webviews::show(app, Some(&label));
+    tab_webviews::notify_tabs_changed(app);
+    if let Some(design) = pending_design {
+        navigate_child(app, &label, &sidecar::with_design_intent(base_target, Some(design)));
     }
     // A fresh composition has no cached thumbnail yet. Refresh it in the
     // background once the Studio server answers, then cache the bytes the
@@ -365,19 +326,6 @@ fn navigate_child(app: &tauri::AppHandle, label: &str, url: &str) {
     }
 }
 
-fn main_webview_navigate(app: &tauri::AppHandle, url: tauri::Url) -> Result<(), CodedError> {
-    tab_webviews::main_webview(app)
-        .ok_or_else(|| CodedError::plain("main_window_gone", "the main window is gone"))?
-        .navigate(url)
-        .map_err(|e| {
-            CodedError::new(
-                "navigate_failed",
-                e.to_string(),
-                serde_json::json!({ "detail": e.to_string() }),
-            )
-        })
-}
-
 /// The open of `key` is over without anything to report.
 fn clear_phase(app: &tauri::AppHandle, key: &str) {
     if let Some(state) = app.try_state::<Mutex<AppState>>() {
@@ -389,11 +337,9 @@ fn clear_phase(app: &tauri::AppHandle, key: &str) {
 
 /// An open failed: its tab goes (a project that was already open keeps its
 /// own), and the failure is published for the Projects page, before it can load
-/// again. Without tabs the previous project is already gone, so the window
-/// would stay on a dead backend: it goes back to the Projects page, which shows
-/// the failure; with tabs the Projects tab is shown for the same reason (an open
-/// started from a Studio menu would otherwise fail unseen). `false` when a newer
-/// open of the project took over meanwhile and owns the phase.
+/// again; the Projects tab is shown so the failure is seen (an open started
+/// from a Studio menu would otherwise fail unseen). `false` when a newer open
+/// of the project took over meanwhile and owns the phase.
 fn fail_open(
     app: &tauri::AppHandle,
     key: &str,
@@ -404,23 +350,19 @@ fn fail_open(
     let Some(state) = app.try_state::<Mutex<AppState>>() else {
         return true;
     };
-    let (multi, owned) = {
+    let owned = {
         let Ok(mut state) = state.lock() else {
             return true;
         };
         let outcome = state.tabs.fail(key, began);
         let owned = state.home.open_failed(key, &outcome, label, error);
         tab_actions::publish_state(&state);
-        (state.multi, owned)
+        owned
     };
     if !owned {
         return false;
     }
-    if multi {
-        tab_webviews::notify_tabs_changed(app);
-        let _ = tab_actions::activate(app, super::tabs::HOME);
-    } else if !super::window_is_on_home(app) {
-        super::show_home(app);
-    }
+    tab_webviews::notify_tabs_changed(app);
+    let _ = tab_actions::activate(app, super::tabs::HOME);
     true
 }

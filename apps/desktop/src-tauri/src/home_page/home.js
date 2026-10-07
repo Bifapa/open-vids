@@ -57,17 +57,14 @@
     renameAt: "list",
     loading: true,
     loFocus: null,
-    opening: null,
   };
   const byId = (id) => S.items.find((p) => p.id === id);
   const itemEl = (id) => body.querySelector('[data-item][data-id="' + CSS.escape(id) + '"]');
   const SORTS = { opened: "home.sort.opened", name: "home.sort.name", dur: "home.sort.duration" };
   const monoWrap = (inner) => '<span class="mono" style="font-size:11px">' + inner + "</span>";
-  /* Project tabs (beta, tabs.js): `window.OVTabs` lists the projects open in a tab (a recent's id is its tab key),
-     `opens` holds the opens this page started and is still waiting for (trackOpen, further down). Without the beta
-     flag, or a shell that answers no tab list, both stay empty and every card renders as it always did. */
-  const tabState = (id) => (window.OVTabs ? window.OVTabs.stateOf(id) : null);
-  const perProject = () => OV.betaFeatures() && !!window.OVTabs && window.OVTabs.enabled();
+  /* Project tabs (tabs.js): `window.OVTabs` lists the projects open in a tab (a recent's id is its tab key),
+     `opens` holds the opens this page started and is still waiting for (trackOpen, further down). */
+  const tabState = (id) => window.OVTabs.stateOf(id);
   const opens = new Map();
   const isOpening = (id) => opens.has(id) || tabState(id) === "opening";
   /* What a card shows: "opening" (spinner over the thumbnail, inert), "open" (in a tab) or "". */
@@ -726,8 +723,8 @@
     loSect.hidden = empty || searching;
     chatSect.hidden = searching;
     chatSect.classList.toggle("is-hero", empty);
-    /* Design systems (beta): the section steps aside while Recent is searched, and shows only systems (no empty
-       prompt) while there are no projects. design.js keeps no-op hooks in stable builds. */
+    /* Design systems: the section steps aside while Recent is searched, and shows only systems (no empty
+       prompt) while there are no projects. */
     OVDesign.sync({ hidden: searching, bare: empty });
     if (!loSect.hidden) renderStrip();
     const dis = S.loading || empty;
@@ -1267,79 +1264,8 @@
       );
   }
 
-  /* ---------- opening: the window stays here until Studio is up, then navigates ---------- */
-  let pollTimer = null,
-    overlay = null;
-  /* `label` is the project's name; without one, `fallback` (a message key) stands in ("project", "last project"). */
-  function showOpening(label, fallback, note) {
-    S.opening = true;
-    S.openingLabel = label || "";
-    S.openingFallback = fallback || "home.opening.project";
-    S.openingNote = note || "";
-    if (!overlay) {
-      overlay = document.createElement("div");
-      overlay.className = "opening";
-      overlay.setAttribute("role", "status");
-      win.appendChild(overlay);
-    }
-    paintOpening();
-    clearInterval(pollTimer);
-    pollTimer = setInterval(() => {
-      api("/api/open-state")
-        .then((st) => {
-          if (st.phase === "failed") {
-            hideOpening();
-            toast(
-              th("home.error.open", {
-                name: st.label || openingName(),
-                message: describeError(st) || tr("home.error.unknown"),
-              }),
-              null,
-              "error",
-            );
-            composer.setBusy(null);
-            load();
-          } else if (st.phase === "idle") {
-            hideOpening();
-            composer.setBusy(null);
-          }
-        })
-        .catch(() => clearInterval(pollTimer));
-    }, 500);
-  }
-  const openingName = () => S.openingLabel || tr(S.openingFallback);
-  function paintOpening() {
-    if (!overlay) return;
-    overlay.innerHTML =
-      '<div class="opening-card"><i class="spinner"></i><span>' +
-      OVI18N.rich(
-        "home.opening.text",
-        { name: openingName() },
-        { name: (inner) => '<span class="name">' + inner + "</span>" },
-      ) +
-      "</span>" +
-      /* A note beside the open (the design system was not applied): readable, never blocking. */
-      (S.openingNote
-        ? '<span class="opening-note">' +
-          ic("alert", 12) +
-          "<span>" +
-          esc(S.openingNote) +
-          "</span></span>"
-        : "") +
-      "</div>";
-  }
-  function hideOpening() {
-    clearInterval(pollTimer);
-    pollTimer = null;
-    S.opening = null;
-    S.openingNote = "";
-    if (overlay) {
-      overlay.remove();
-      overlay = null;
-    }
-  }
-  /* ---------- project tabs (beta): opening is per project, the page stays usable ---------- */
-  /* With tabs on (OVTabs.enabled()) the shell opens each project in a tab of its own and answers GET /api/open-state
+  /* ---------- opening: per project, the page stays usable ---------- */
+  /* The shell opens each project in a tab of its own and answers GET /api/open-state
      with `opens: [{ key, phase: "opening" | "failed", label, code, error, params }]`, one entry per project (a
      failure is delivered once). The card of a project being opened shows a spinner and is inert; nothing else is
      blocked, so a second project can be opened meanwhile. An entry that disappears means the project is open (the
@@ -1405,7 +1331,7 @@
         load();
       });
   }
-  /* A failed open: the same toast as the overlay path. A key whose request already showed its error is skipped. */
+  /* A failed open: toast its error. A key whose request already showed its error is skipped. */
   function openFailed(o) {
     if (reported.delete(o.key)) return;
     const op = opens.get(o.key),
@@ -1450,7 +1376,7 @@
      (projects opened, renamed, edited, new thumbnails). Redrawn only when the list really differs, and never
      under an open menu, sheet or rename field. */
   function refreshRecents() {
-    if (!perProject() || S.loading || S.renaming || OVH.menuOpen() || OVH.sheetOpen()) return;
+    if (S.loading || S.renaming || OVH.menuOpen() || OVH.sheetOpen()) return;
     api("/api/recents")
       .then((res) => {
         const next = (res.recents || []).map(toItem);
@@ -1464,7 +1390,7 @@
      list when one begins and when it fails, so ask what happened then. A failure is delivered once, to whoever
      reads it first, so every read goes through openFailed / trackOpen. Skipped while pollOpens is mid-read. */
   function adoptForeignOpens() {
-    if (!perProject() || opensBusy) return;
+    if (opensBusy) return;
     opensBusy = true;
     api("/api/open-state")
       .then((st) => {
@@ -1481,18 +1407,16 @@
         opensBusy = false;
       });
   }
-  if (window.OVTabs) window.OVTabs.subscribe(syncMarks);
-  if (OV.betaFeatures()) {
-    document.addEventListener("visibilitychange", refreshRecents);
-    window.addEventListener("focus", refreshRecents);
-    window.addEventListener("openvids-tabs-changed", refreshRecents);
-    for (const type of ["visibilitychange", "focus", "openvids-tabs-changed"])
-      (type === "visibilitychange" ? document : window).addEventListener(type, adoptForeignOpens);
-    window.addEventListener("openvids-tabs-changed", adoptFork);
-    document.addEventListener("visibilitychange", () => {
-      if (!document.hidden) adoptFork();
-    });
-  }
+  window.OVTabs.subscribe(syncMarks);
+  document.addEventListener("visibilitychange", refreshRecents);
+  window.addEventListener("focus", refreshRecents);
+  window.addEventListener("openvids-tabs-changed", refreshRecents);
+  for (const type of ["visibilitychange", "focus", "openvids-tabs-changed"])
+    (type === "visibilitychange" ? document : window).addEventListener(type, adoptForeignOpens);
+  window.addEventListener("openvids-tabs-changed", adoptFork);
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) adoptFork();
+  });
   /* A project with no clips yet (new, or an empty folder) opens in Media: importing is the first step. `extra` adds fields to the open request (the design systems' Create flow sends design: "create"). */
   function openProject(p, at, extra) {
     if (S.opening || isOpening(p.id)) return;
@@ -1503,13 +1427,7 @@
       );
     closeMenu(false);
     const req = Object.assign({ id: p.id }, p.media === 0 ? { workspace: "media" } : {}, extra);
-    if (perProject()) return openInTab(p, req);
-    showOpening(p.name);
-    api("/api/open", req).catch((err) => {
-      hideOpening();
-      toast(th("home.error.open", { name: p.name, message: describeError(err) }), null, "error");
-      load();
-    });
+    openInTab(p, req);
   }
   /* The folder name in an error message, emphasised like the prototype's sheet ("… missing in <b>Footage Dump</b>."). */
   function boldName(msg, name) {
@@ -1525,8 +1443,7 @@
     api("/api/pick-open", {})
       .then((res) => {
         if (res.cancelled) return;
-        if (perProject() && res.key) openedInTab(res.key, "");
-        else showOpening(null, "home.opening.project");
+        openedInTab(res.key, "");
       })
       .catch((err) => {
         if (!err.data || !err.data.invalid)
@@ -1704,7 +1621,7 @@
     );
     const q = (id) => sh.querySelector("#" + id),
       inp = q("npName");
-    /* Design systems (beta): the optional picker row; "None" unless one is chosen. */
+    /* Design systems: the optional picker row; "None" unless one is chosen. */
     const design = OVDesign.bindPicker(sh);
     const setErr = (id, els, msg) => {
       q(id).innerHTML = msg ? ic("alert", 12) + "<span>" + msg + "</span>" : "";
@@ -1817,10 +1734,8 @@
           close();
           clearSearch(false);
           const note = OVDesign.warning(res);
-          if (perProject() && res && res.key) {
-            openedInTab(res.key, name);
-            if (note) toast(note, null, "error");
-          } else showOpening(name, null, note);
+          openedInTab(res.key, name);
+          if (note) toast(note, null, "error");
         })
         .catch((err) => {
           busy = false;
@@ -2407,12 +2322,10 @@
       })
       .then((res) => {
         pathEl.textContent = res.path;
-        if (perProject() && res.key)
-          openedInTab(res.key, res.name, (failed) => {
-            composer.setBusy(null);
-            if (!failed) composer.clear();
-          });
-        else showOpening(res.name);
+        openedInTab(res.key, res.name, (failed) => {
+          composer.setBusy(null);
+          if (!failed) composer.clear();
+        });
       })
       .catch((err) => {
         start.busy = false;
@@ -2483,7 +2396,7 @@
   initStartLocation();
   render();
   load();
-  /* Design systems (beta): the section above Recent; the dialogs open projects through openProject. */
+  /* Design systems: the section above Recent; the dialogs open projects through openProject. */
   OVDesign.mount({
     recent: recentSect,
     main,
@@ -2498,33 +2411,18 @@
     paintFoot();
     refreshFoot();
     composer.relocalize();
-    paintOpening();
     if (settingsFrame) settingsFrame.title = tr("home.settings.title");
     render();
   });
   adoptFork();
-  /* Opening at launch (Reopen last project / a project named on the command line): show it until Studio is up.
-     With project tabs on, the shell lists these opens per project (adoptOpens), so the page asks it only once
-     it knows whether tabs are on. */
+  /* Opens already running when the page loads (Reopen last project, a project named on the command line): the shell
+     lists them per project (adoptOpens), once the first tab list is read. */
   function readOpenState() {
     api("/api/open-state")
-      .then((st) => {
-        if (perProject()) adoptOpens(st);
-        else if (st.phase === "opening") showOpening(st.label, "home.opening.lastProject");
-        else if (st.phase === "failed")
-          toast(
-            th("home.error.open", {
-              name: st.label,
-              message: describeError(st) || tr("home.error.unknown"),
-            }),
-            null,
-            "error",
-          );
-      })
+      .then(adoptOpens)
       .catch(() => {});
   }
-  if (OV.betaFeatures() && window.OVTabs) window.OVTabs.ready.then(readOpenState);
-  else readOpenState();
+  window.OVTabs.ready.then(readOpenState);
   /* ---------- First-run onboarding (onboarding*.js, loaded when it opens; the overlay markup is in index.html) ---------- */
   const OB_SCRIPTS = [
     "settings-core",
@@ -2605,9 +2503,8 @@
         toast(th("home.error.setup", { message: describeError(err) }), null, "error");
       });
   }
-  /* Decided by index.html before first paint: unfinished setup, or Help › Welcome asked for it. */
-  if (document.documentElement.classList.contains("is-onboarding"))
-    openOnboarding(!!(window.OV_BOOT && window.OV_BOOT.openOnboarding));
+  /* Decided by index.html before first paint: unfinished setup (Help › Welcome calls ovHome.openOnboarding). */
+  if (document.documentElement.classList.contains("is-onboarding")) openOnboarding(false);
 
   /* Shared by the mark button's compact menu and the menu bar's Help menu. */
   const aboutSheetRef = { current: null };

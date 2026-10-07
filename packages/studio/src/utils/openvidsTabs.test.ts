@@ -15,7 +15,6 @@ const KEY_A = "9f2c0a41b7d3e8c5";
 const KEY_B = "0123456789abcdef";
 
 const answer: TabsSnapshot = {
-  enabled: true,
   active: "home",
   limit: 6,
   tabs: [
@@ -30,52 +29,43 @@ describe("parseTabsSnapshot", () => {
   });
 
   it("takes an empty tab list and an active project key", () => {
-    expect(parseTabsSnapshot({ enabled: true, active: KEY_A, limit: 6, tabs: [] })).toEqual({
-      enabled: true,
+    expect(parseTabsSnapshot({ active: KEY_A, limit: 6, tabs: [] })).toEqual({
       active: KEY_A,
       limit: 6,
       tabs: [],
     });
   });
 
-  it("takes a bare enabled:false as a complete answer: draw nothing", () => {
-    expect(parseTabsSnapshot({ enabled: false })).toEqual({
-      enabled: false,
-      active: "home",
-      limit: 0,
-      tabs: [],
-    });
+  it("does not carry the fields it does not know", () => {
+    expect(parseTabsSnapshot({ ...answer, enabled: true })).toEqual(answer);
   });
 
   it.each([
     ["null", null],
     ["an array", [answer]],
     ["a string", "tabs"],
-    ["no enabled flag", { active: "home", limit: 6, tabs: [] }],
-    ["a truthy non-boolean enabled", { enabled: "yes", active: "home", limit: 6, tabs: [] }],
-    ["a missing active", { enabled: true, limit: 6, tabs: [] }],
-    ["an empty active", { enabled: true, active: "", limit: 6, tabs: [] }],
-    ["a non-numeric limit", { enabled: true, active: "home", limit: "6", tabs: [] }],
-    ["a fractional limit", { enabled: true, active: "home", limit: 2.5, tabs: [] }],
-    ["a negative limit", { enabled: true, active: "home", limit: -1, tabs: [] }],
-    ["tabs that are not a list", { enabled: true, active: "home", limit: 6, tabs: {} }],
-    ["a tab that is not an object", { enabled: true, active: "home", limit: 6, tabs: ["x"] }],
-    [
-      "a tab without a key",
-      { enabled: true, active: "home", limit: 6, tabs: [{ name: "A", state: "open" }] },
-    ],
+    ["a bare object", {}],
+    ["a missing active", { limit: 6, tabs: [] }],
+    ["an empty active", { active: "", limit: 6, tabs: [] }],
+    ["a missing limit", { active: "home", tabs: [] }],
+    ["a non-numeric limit", { active: "home", limit: "6", tabs: [] }],
+    ["a fractional limit", { active: "home", limit: 2.5, tabs: [] }],
+    ["a negative limit", { active: "home", limit: -1, tabs: [] }],
+    ["missing tabs", { active: "home", limit: 6 }],
+    ["tabs that are not a list", { active: "home", limit: 6, tabs: {} }],
+    ["a tab that is not an object", { active: "home", limit: 6, tabs: ["x"] }],
+    ["a tab without a key", { active: "home", limit: 6, tabs: [{ name: "A", state: "open" }] }],
     [
       "a tab with an empty key",
-      { enabled: true, active: "home", limit: 6, tabs: [{ key: "", name: "A", state: "open" }] },
+      { active: "home", limit: 6, tabs: [{ key: "", name: "A", state: "open" }] },
     ],
     [
       "a tab whose name is not a string",
-      { enabled: true, active: "home", limit: 6, tabs: [{ key: KEY_A, name: 7, state: "open" }] },
+      { active: "home", limit: 6, tabs: [{ key: KEY_A, name: 7, state: "open" }] },
     ],
     [
       "a tab in an unknown state",
       {
-        enabled: true,
         active: "home",
         limit: 6,
         tabs: [{ key: KEY_A, name: "A", state: "closed" }],
@@ -84,7 +74,6 @@ describe("parseTabsSnapshot", () => {
     [
       "a repeated key",
       {
-        enabled: true,
         active: "home",
         limit: 6,
         tabs: [
@@ -100,7 +89,6 @@ describe("parseTabsSnapshot", () => {
   it("rejects the whole answer when one tab is malformed, not just that tab", () => {
     expect(
       parseTabsSnapshot({
-        enabled: true,
         active: "home",
         limit: 6,
         tabs: [{ key: KEY_A, name: "A", state: "open" }, { key: KEY_B }],
@@ -171,7 +159,7 @@ describe("the home server client", () => {
   });
 
   it("fetchTabs is null for a malformed answer, a failed status, a network error or a bad origin", async () => {
-    stubFetch({ enabled: true });
+    stubFetch({ active: "home" });
     await expect(fetchTabs(HOME)).resolves.toBeNull();
     stubFetch(answer, false);
     await expect(fetchTabs(HOME)).resolves.toBeNull();

@@ -3,10 +3,10 @@
 /**
  * What a design turn looks like in the chat: a «Design system · create/edit» tag on its prompt, and under a finished
  * turn that saved a system a card with one click to attach it (or update the project's older copy). Retrying a
- * failed design turn carries its action and options. All of it is beta-only.
+ * failed design turn carries its action and options.
  */
 import { act } from "react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import type {
   AssistantPart,
   ChatState,
@@ -36,7 +36,7 @@ import {
   designSummary,
   type FakeDesignData,
 } from "../../design/designTestHarness";
-import { settle, visitStudio } from "../../design/designDom.testHelpers";
+import { settle } from "../../design/designDom.testHelpers";
 import { cleanupMounted, mountHost } from "../ui/mountHost.testHelpers";
 import { AgentChatBody } from "./AgentChatPanel";
 import { buttonWithText, click } from "./chatTestHarness";
@@ -121,11 +121,8 @@ async function open(chat: ChatState, design: FakeDesignData = {}) {
 const card = () => document.querySelector<HTMLElement>('[data-testid="design-saved-card"]');
 const tag = () => document.querySelector<HTMLElement>('[data-testid="design-turn-tag"]');
 
-beforeEach(() => visitStudio("beta"));
-
 afterEach(() => {
   cleanupMounted();
-  visitStudio("");
 });
 
 describe("the tag on a design prompt", () => {
@@ -145,13 +142,6 @@ describe("the tag on a design prompt", () => {
     });
     await open(chat);
     expect(tag()).toBeNull();
-  });
-
-  it("and the saved card are not drawn with the beta flag off", async () => {
-    visitStudio("");
-    await open(designChat({ parts: [savedPart("done")] }));
-    expect(tag()).toBeNull();
-    expect(card()).toBeNull();
   });
 });
 
@@ -330,28 +320,5 @@ describe("retrying a failed design turn", () => {
         designOptions: { source: "website", url: "https://example.com" },
       }),
     );
-  });
-
-  it("offers no Retry for a failed design turn outside the beta channel, and still does for any other turn", async () => {
-    visitStudio("");
-    const design = await open(designChat({ status: "failed" }));
-    expect(buttonWithText(design.host, "Retry this turn")).toBeNull();
-    expect(design.agentClient.startTurn).not.toHaveBeenCalled();
-    cleanupMounted();
-
-    const ordinary = chatState({
-      chat: summary({ status: "failed" }),
-      messages: [userMessage("m1", "Trim the intro"), assistantMessage({ status: "failed" })],
-      turns: [
-        turn({
-          status: "failed",
-          endedAt: 9000,
-          checkpoint: null,
-          error: { code: "provider_overloaded", message: "529" },
-        }),
-      ],
-    });
-    const plain = await open(ordinary);
-    expect(buttonWithText(plain.host, "Retry this turn")).not.toBeNull();
   });
 });

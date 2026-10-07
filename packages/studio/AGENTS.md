@@ -110,8 +110,7 @@ the unit test on the pure function underneath.
   card reads `acceptedIssueIds` (derived when the report is read) and the report
   view re-reads after every mark or undo. A pass's render link shows only for
   renders that survive the session (`isPassRenderLinked`).
-- **Design systems are a beta surface in `src/design/`** (`isBetaFeatureEnabled("designSystems")`;
-  with the flag off nothing renders, reads or touches the address). The header's `DesignButton`
+- **Design systems live in `src/design/`.** The header's `DesignButton`
   popover and the chat's `DesignSavedCards` read one store (`studioDesignStore`, `/api/design-systems`
   and `/api/projects/:id/design*`; reads abort and are dropped when superseded, no polling: it
   re-reads when the popover opens and when any agent turn ends). Dialogs (create, edit, preview) live
@@ -128,15 +127,13 @@ the unit test on the pure function underneath.
   carries the mutation that failed, and a chat card shows it only when it came from that card's
   button. The create dialog resolves the picked video/project at render time (`effectiveFields`):
   both lists arrive after it opens, and "no videos" shows only once the file tree has loaded. Retry
-  is hidden for a design turn when the beta flag is off. "From another project" appears only when
+  is offered for a design turn like any other. "From another project" appears only when
   `useDesignHostCapabilities(projectId, enabled)` finds other projects (the `#` mentions'
   `cross-project` list, asked only while the create dialog is open; none or a failure means the
   option is hidden). The shell opens the create dialog with
   `openvidsDesign=create[&openvidsDesignSource=…]`, read once and stripped (`designParam.ts`).
-- **Voiceover is a beta surface in `src/voice/`** (`isBetaFeatureEnabled("voiceover")`; with the flag off the
-  `voiceover` dock tab is not registered or offered in Window, the media nav's Voice group and the inspector's
-  module are absent). One script store (`voice/script/voiceScriptStore.ts`, in `VoiceProvider`) feeds the tab
-  (`voice/panel/VoiceoverPanel`) and the clip's inspector module (`components/editor/propertyPanelVoiceGroup`); a
+- **Voiceover lives in `src/voice/`.** One script store (`voice/script/voiceScriptStore.ts`, in `VoiceProvider`) feeds the tab
+  (`voice/panel/VoiceoverPanel`, the `voiceover` dock tab) and the clip's inspector module (`components/editor/propertyPanelVoiceGroup`); a
   clip is a voice clip by `data-ov-voice-line` (`TimelineElement.voiceLine`). Changing a take rewrites every clip of
   the line (`voice/clip/voiceClipOps.ts`: file, in-point, length) and, with ripple on, shifts the later clips of the
   track (`player/components/timelineDurationRipple.ts`) in ONE undo entry (shared `coalesceKey`; with ripple on, a
