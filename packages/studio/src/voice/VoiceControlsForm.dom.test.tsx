@@ -9,7 +9,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { VoiceCatalogPage, VoiceControl, VoicePresetVoice } from "@hyperframes/agent-protocol";
 import type * as voiceAudio from "./voiceAudio";
 import { cleanupMounted } from "../components/ui/mountHost.testHelpers";
-import { byLabel, mountVoice, pressAndSettle, settle } from "./voiceDom.testHelpers";
+import { byLabel, mountVoice, pressAndSettle, settle, typeInto } from "./voiceDom.testHelpers";
 import { VoiceControlsForm } from "./VoiceControlsForm";
 import type { VoiceDraft } from "./voiceDraft";
 import {
@@ -49,7 +49,7 @@ function mount(
     catalog?: VoiceCatalogPage | Error;
   } = {},
 ) {
-  const onVoice = vi.fn<(voice: VoicePresetVoice) => void>();
+  const onVoice = vi.fn<(voice: VoicePresetVoice | null) => void>();
   const onStyle = vi.fn<(style: string) => void>();
   const onSetting = vi.fn<(id: string, value: number | boolean) => void>();
   const mounted = mountVoice(
@@ -113,6 +113,28 @@ describe("controls drawn from a provider's capabilities", () => {
     expect(control(host, "catalog")).toBeNull();
     expect(headings(host)).toEqual(["Voice"]);
     expect(onVoice).not.toHaveBeenCalled();
+  });
+
+  it("names the voice as it is typed, without waiting for Enter or a blur, and clears it when emptied", async () => {
+    const { host, onVoice } = mount([{ kind: "voice_text", maxChars: 100 }], {
+      draft: { providerId: "custom", voice: null },
+    });
+    await settle();
+    const field = byLabel<HTMLInputElement>(host, "Voice name");
+    if (!field) throw new Error("no voice name field");
+    expect(field.value).toBe("");
+    await typeInto(field, "Samantha");
+    expect(onVoice).toHaveBeenLastCalledWith({ id: "Samantha", name: "Samantha", kind: "custom" });
+    // What is typed stays as typed (a name may hold spaces); the voice gets the trimmed name.
+    await typeInto(field, " en-US Harper ");
+    expect(field.value).toBe(" en-US Harper ");
+    expect(onVoice).toHaveBeenLastCalledWith({
+      id: "en-US Harper",
+      name: "en-US Harper",
+      kind: "custom",
+    });
+    await typeInto(field, "  ");
+    expect(onVoice).toHaveBeenLastCalledWith(null);
   });
 
   it("draws nothing for a model that reports no controls", async () => {

@@ -1,10 +1,18 @@
-import { useId, type ReactNode } from "react";
+import { useEffect, useId, useState, type ReactNode } from "react";
 import type {
   VoiceControl,
   VoicePresetVoice,
   VoiceProviderControls,
 } from "@hyperframes/agent-protocol";
-import { Input, SegmentedControl, Select, Slider, Toggle, cn } from "../components/ui";
+import {
+  SegmentedControl,
+  Select,
+  Slider,
+  Toggle,
+  cn,
+  fieldBase,
+  fieldText,
+} from "../components/ui";
 import { formatNumber, useTranslation } from "../i18n";
 import { VoiceCatalogPicker } from "./VoiceCatalogPicker";
 import { VoiceDesignControl } from "./VoiceDesignControl";
@@ -151,23 +159,36 @@ function VoiceTextField({
 }: {
   control: VoiceTextControl;
   value: string;
-  onChange: (voice: VoicePresetVoice) => void;
+  /** The voice named so far; null when the field was emptied. */
+  onChange: (voice: VoicePresetVoice | null) => void;
 }) {
   const { t } = useTranslation();
+  // What is typed stays as typed (a name may hold spaces); the draft gets the trimmed name on every keystroke, so
+  // Listen is available as soon as there is one.
+  const [text, setText] = useState(value);
+  useEffect(() => {
+    // The draft changed from outside (another voice taken back from the comparison).
+    setText((current) => (current.trim() === value ? current : value));
+  }, [value]);
   return (
     <div className="grid gap-1" data-voice-control="voice_text">
       <span className="text-xs font-medium text-fg-2">{controlLabel("voice_text")}</span>
-      <Input
-        value={value}
-        placeholder={t("voice.voiceText.placeholder")}
-        aria-label={controlLabel("voice_text")}
-        maxLength={control.maxChars}
-        spellCheck={false}
-        onCommit={(next) => {
-          const name = next.trim();
-          if (name !== "") onChange({ id: name, name, kind: "custom" });
-        }}
-      />
+      <div className={fieldBase}>
+        <input
+          value={text}
+          placeholder={t("voice.voiceText.placeholder")}
+          aria-label={controlLabel("voice_text")}
+          maxLength={control.maxChars}
+          spellCheck={false}
+          autoComplete="off"
+          onChange={(event) => {
+            setText(event.target.value);
+            const name = event.target.value.trim();
+            onChange(name === "" ? null : { id: name, name, kind: "custom" });
+          }}
+          className={fieldText}
+        />
+      </div>
     </div>
   );
 }
@@ -189,7 +210,7 @@ export function VoiceControlsForm({
   controls: VoiceProviderControls;
   draft: VoiceDraft;
   language: string | null;
-  onVoice: (voice: VoicePresetVoice) => void;
+  onVoice: (voice: VoicePresetVoice | null) => void;
   onStyle: (style: string) => void;
   onSetting: (id: string, value: number | boolean) => void;
 }) {

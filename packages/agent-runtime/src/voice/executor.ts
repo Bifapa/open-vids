@@ -214,12 +214,27 @@ export class TurnVoice {
     const setup = await broker.askSetup({ agent: caller, ...parsed.value }, signal);
     if (setup.state !== "answered" || setup.presetId === undefined) return refuse(SETUP_DECLINED);
 
-    const view = await host.setProjectVoice(setup.presetId, signal);
+    let view = await host.setProjectVoice(setup.presetId, signal);
     const preset = view.voice;
     if (!preset)
       return refuse(
         "Studio did not set the chosen voice on the project. Tell the user and ask them to choose again.",
       );
+    // The script's language filters the catalog and reaches providers that take one; the lines stay as they are.
+    if (parsed.value.language !== null && view.language !== parsed.value.language) {
+      view = await host.saveScript(
+        {
+          language: parsed.value.language,
+          lines: view.lines.map(({ id, text, speakerText, style }) => ({
+            id,
+            text,
+            speakerText,
+            style,
+          })),
+        },
+        signal,
+      );
+    }
     const providers = await host.providers(signal).catch((error: unknown) => {
       if (signal.aborted) throw error;
       return null;

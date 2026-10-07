@@ -26,7 +26,7 @@ export interface VoiceSetup {
   retryControls(): void;
   chooseModel(model: string): void;
   draft: VoiceDraft;
-  setVoice(voice: VoicePresetVoice): void;
+  setVoice(voice: VoicePresetVoice | null): void;
   setStyle(style: string): void;
   setSetting(id: string, value: number | boolean): void;
   /** Puts a compared draft back as the current one. */
@@ -94,6 +94,14 @@ export function useVoiceSetup(request: VoiceSetupRequest): VoiceSetup {
       .then((next) => {
         if (controller.signal.aborted) return;
         setControls(next);
+        // A server where the voice is a name to type starts with the one configured for it, so Listen works
+        // without typing; a voice already chosen (or carried in) stays.
+        const configured = next.provider.voice.trim();
+        if (configured !== "" && next.controls.some((control) => control.kind === "voice_text")) {
+          setVoiceState(
+            (current) => current ?? { id: configured, name: configured, kind: "custom" },
+          );
+        }
         setSettings(settingsFor(next.controls, settingsRef.current));
         // A model without a style field keeps no style.
         if (!next.controls.some((control) => control.kind === "style")) setStyleState("");

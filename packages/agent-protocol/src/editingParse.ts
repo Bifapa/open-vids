@@ -104,8 +104,9 @@ function readOperation(raw: unknown, index: number): ParsedEdit<EditOperation> {
   switch (name) {
     case "add_clip": {
       const voiceLine = maybe("voiceLine", readVoiceLineId);
+      // With a voice line the server takes the file from the line's selected take; an empty `asset` sent beside it is ignored.
       const asset =
-        voiceLine !== undefined && raw.asset === undefined
+        voiceLine !== undefined && (raw.asset === undefined || raw.asset === "")
           ? ""
           : need(readString(raw.asset, "asset", EDIT_LIMITS.pathChars));
       const start = time("start");

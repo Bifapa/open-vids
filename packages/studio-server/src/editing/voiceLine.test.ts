@@ -134,6 +134,11 @@ describe("add_clip voiceLine parsing", () => {
       operations: [{ op: "add_clip", voiceLine: "intro", start: 0, track: 1 }],
     });
     expect(ok.ok).toBe(true);
+    // A model filling every listed field sends `asset: ""` next to the line (seen in a live turn).
+    const emptyAsset = parseApplyEditsRequest({
+      operations: [{ op: "add_clip", asset: "", voiceLine: "intro", start: 0, track: 1 }],
+    });
+    expect(emptyAsset.ok).toBe(true);
     const bad = parseApplyEditsRequest({
       operations: [{ op: "add_clip", voiceLine: "../x", start: 0, track: 1 }],
     });

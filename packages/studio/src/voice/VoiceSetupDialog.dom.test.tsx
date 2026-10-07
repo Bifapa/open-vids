@@ -229,6 +229,72 @@ describe("hearing a voice", () => {
   });
 });
 
+describe("a server where the voice is a typed name", () => {
+  const custom = providerInfo({
+    id: "custom",
+    connector: "openai_compatible",
+    name: "Custom server",
+    baseUrl: "http://127.0.0.1:8880/v1",
+    model: "say-tts",
+    voice: "Samantha",
+    keyRequired: false,
+    hasKey: false,
+    configured: true,
+  });
+  const data = {
+    providers: [custom],
+    controls: providerControls({
+      provider: custom,
+      model: "say-tts",
+      models: [],
+      controls: [{ kind: "voice_text", maxChars: 200 }],
+    }),
+  };
+
+  it("starts with the voice configured for the server, so Listen works without typing", async () => {
+    const { calls } = open(data);
+    await settle();
+    expect(byLabel<HTMLInputElement>(document.body, "Voice name")?.value).toBe("Samantha");
+    expect(button(document.body, "Listen")?.disabled).toBe(false);
+    expect(save()?.disabled).toBe(false);
+    await pressAndSettle(button(document.body, "Listen"));
+    expect(calls.voices).not.toHaveBeenCalled();
+    expect(calls.sample.mock.calls[0][0].preset).toMatchObject({
+      providerId: "custom",
+      model: "say-tts",
+      voice: { id: "Samantha", name: "Samantha", kind: "custom" },
+    });
+  });
+
+  it("hears a name as soon as it is typed, and not at all while the field is empty", async () => {
+    const unset = { ...custom, voice: "" };
+    const { calls } = open({
+      providers: [unset],
+      controls: providerControls({
+        provider: unset,
+        model: "say-tts",
+        models: [],
+        controls: [{ kind: "voice_text", maxChars: 200 }],
+      }),
+    });
+    await settle();
+    const field = byLabel<HTMLInputElement>(document.body, "Voice name");
+    if (!field) throw new Error("no voice name field");
+    expect(field.value).toBe("");
+    expect(button(document.body, "Listen")?.disabled).toBe(true);
+    expect(save()?.disabled).toBe(true);
+    await typeInto(field, "Alex");
+    expect(button(document.body, "Listen")?.disabled).toBe(false);
+    await pressAndSettle(button(document.body, "Listen"));
+    expect(calls.sample.mock.calls[0][0].preset.voice).toMatchObject({
+      id: "Alex",
+      kind: "custom",
+    });
+    await typeInto(field, "");
+    expect(button(document.body, "Listen")?.disabled).toBe(true);
+  });
+});
+
 describe("comparing voices", () => {
   it("keeps up to three voices side by side on the same phrase, and takes one back as the current voice", async () => {
     const { calls } = open({

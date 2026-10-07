@@ -60,11 +60,15 @@ const SECTION_META: Record<
     icon: <Plug />,
   },
   jev: { group: "settings.nav.group.ai", label: "settings.section.jev", icon: <Lightning /> },
-  voice: { group: "settings.nav.group.ai", label: "settings.section.voice", icon: <Microphone /> },
   assets: {
     group: "settings.nav.group.workflow",
     label: "settings.section.assets",
     icon: <ImageSquare />,
+  },
+  voice: {
+    group: "settings.nav.group.workflow",
+    label: "settings.section.voice",
+    icon: <Microphone />,
   },
   execution: {
     group: "settings.nav.group.workflow",

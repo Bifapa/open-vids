@@ -115,6 +115,8 @@ describe("a voiceover turn", () => {
         presetId: "preset-1",
         presetName: "Warm narrator",
       });
+      // The script takes the language the agent named, so the catalog and the providers get it.
+      await waitUntil(() => voice.language === "en-US", "the script language");
 
       // 2. The permission card carries the estimate; nothing was generated yet.
       await waitUntil(

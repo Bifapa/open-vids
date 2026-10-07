@@ -8,8 +8,8 @@ export const SETTINGS_SECTIONS = [
   "agents",
   "providers",
   "jev",
-  "voice",
   "assets",
+  "voice",
   "execution",
 ] as const;
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
