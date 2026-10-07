@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef } from "react";
 import { useMountEffect } from "./useMountEffect";
-import type { AppToast } from "../utils/studioHelpers";
+import type { AppToast, ToastAction } from "../utils/studioHelpers";
 
 interface ToastItem extends AppToast {
   id: number;
@@ -9,13 +9,15 @@ interface ToastItem extends AppToast {
 }
 
 const AUTO_DISMISS_MS = 4000;
+/** A toast with a button stays long enough to be read and pressed. */
+const AUTO_DISMISS_WITH_ACTION_MS = 8000;
 const EXIT_MS = 160;
 const MAX_TOASTS = 3;
 
 let nextToastId = 1;
 
 /**
- * Stacked toasts (max 3). Info toasts auto-dismiss after 4s; error toasts
+ * Stacked toasts (max 3). Info toasts auto-dismiss after 4s (8s with an action button); error toasts
  * persist until explicitly dismissed so failures can't silently vanish.
  */
 export function useToast() {
@@ -50,10 +52,10 @@ export function useToast() {
   );
 
   const showToast = useCallback(
-    (message: string, tone: AppToast["tone"] = "error"): number => {
+    (message: string, tone: AppToast["tone"] = "error", action?: ToastAction): number => {
       const id = nextToastId++;
       setToasts((prev) => {
-        const next = [...prev, { id, message, tone }];
+        const next = [...prev, { id, message, tone, ...(action && { action }) }];
         // Cap the stack; drop the oldest (and its pending timer).
         while (next.length > MAX_TOASTS) {
           const dropped = next.shift();
@@ -62,7 +64,10 @@ export function useToast() {
         return next;
       });
       if (tone !== "error") {
-        const timer = setTimeout(() => dismissToast(id), AUTO_DISMISS_MS);
+        const timer = setTimeout(
+          () => dismissToast(id),
+          action ? AUTO_DISMISS_WITH_ACTION_MS : AUTO_DISMISS_MS,
+        );
         timersRef.current.set(id, timer);
       }
       return id;

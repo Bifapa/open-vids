@@ -194,9 +194,11 @@ function SourceSection({
   const look = LICENSE_LOOK[record.licenseStatus];
   const retrievedAt = formatDate(new Date(record.retrievedAt));
   const found =
-    record.retrievedBy.agent === "user"
-      ? t("media.inspector.downloadedBy", { date: retrievedAt })
-      : t("media.inspector.foundBy", { date: retrievedAt });
+    item.origin === "generated"
+      ? t("media.inspector.generatedBy", { date: retrievedAt })
+      : record.retrievedBy.agent === "user"
+        ? t("media.inspector.downloadedBy", { date: retrievedAt })
+        : t("media.inspector.foundBy", { date: retrievedAt });
   return (
     <Section title={t("media.inspector.section.sourceLicense")}>
       <div className="flex items-center gap-2">

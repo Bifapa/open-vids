@@ -14,6 +14,7 @@ import type { UseSlideshowPersistParams } from "../hooks/useSlideshowPersist";
 import type { AddMediaOverlayHandler } from "./editor/propertyPanelTypes";
 import type { ToggleHiddenHandler } from "../utils/studioHelpers";
 import type { GestureRecordingState } from "../hooks/useGestureCommit";
+import type { UseVoiceClipOpsOptions } from "../voice/clip/useVoiceClipOps";
 
 export interface StudioRightPanelsProps extends StudioEditPersistenceProps {
   activeBlockParams?: {
@@ -56,4 +57,8 @@ export interface StudioRightPanelsProps extends StudioEditPersistenceProps {
   onAddMediaOverlay?: AddMediaOverlayHandler;
   /** Adds a project asset to the timeline at the playhead (the Media workspace's "Add at Playhead" and drop tray). */
   onAddAssetToTimeline?: (path: string) => void;
+  /** The timeline's atomic multi-clip move: the voiceover tab ripples clips with it when a take changes length. */
+  onTimelineGroupMove: UseVoiceClipOpsOptions["onTimelineGroupMove"];
+  /** Files a timeline edit is writing: the external-change watcher leaves them alone. */
+  pendingTimelineEditPathRef: UseVoiceClipOpsOptions["pendingTimelineEditPathRef"];
 }

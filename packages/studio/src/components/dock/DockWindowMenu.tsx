@@ -3,7 +3,7 @@ import { Fragment } from "react";
 import { useTranslation } from "../../i18n";
 import { IconButton, Menu, MenuCheckboxItem, MenuItem, MenuSeparator, Tooltip } from "../ui";
 import { useDockLayoutStore } from "./dockLayoutStore";
-import { PANEL_DEFINITIONS, panelsInZone, type PanelZone } from "./panelRegistry";
+import { PANEL_DEFINITIONS, isPanelAvailable, panelsInZone, type PanelZone } from "./panelRegistry";
 
 /** The prototype's order: the left column, the centre, the right column. */
 const ZONES: readonly PanelZone[] = ["left", "center", "right"];
@@ -23,15 +23,17 @@ export function DockWindowMenu() {
       >
         {ZONES.map((zone) => (
           <Fragment key={zone}>
-            {panelsInZone(zone).map((id) => (
-              <MenuCheckboxItem
-                key={id}
-                checked={openPanels.has(id)}
-                onCheckedChange={() => togglePanel(id)}
-              >
-                {t(PANEL_DEFINITIONS[id].title)}
-              </MenuCheckboxItem>
-            ))}
+            {panelsInZone(zone)
+              .filter(isPanelAvailable)
+              .map((id) => (
+                <MenuCheckboxItem
+                  key={id}
+                  checked={openPanels.has(id)}
+                  onCheckedChange={() => togglePanel(id)}
+                >
+                  {t(PANEL_DEFINITIONS[id].title)}
+                </MenuCheckboxItem>
+              ))}
             <MenuSeparator />
           </Fragment>
         ))}

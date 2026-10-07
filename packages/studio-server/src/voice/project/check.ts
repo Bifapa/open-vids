@@ -168,6 +168,7 @@ export async function estimateOf(
   engine: VoiceEngine,
   selection: Selection,
   requests: readonly RequestPlan[],
+  options: { force?: boolean } = {},
 ): Promise<VoiceEstimate> {
   let cachedLines = selection.current.length;
   let paidRequests = 0;
@@ -178,7 +179,8 @@ export async function estimateOf(
     await engine.models("openrouter").catch(() => []);
   }
   for (const request of requests) {
-    if (engine.peek(request.input).audio !== null) {
+    // A forced regeneration bypasses the cache, so it is always paid.
+    if (options.force !== true && engine.peek(request.input).audio !== null) {
       cachedLines += request.lines.length;
       continue;
     }
@@ -207,11 +209,14 @@ export async function checkScript(
   engine: VoiceEngine,
   projectDir: string,
   script: VoiceScript,
-  request: { lineIds?: string[]; presetId?: string },
+  request: { lineIds?: string[]; presetId?: string; force?: boolean },
 ): Promise<VoiceCheckResult> {
   const selection = await selectWork(engine, projectDir, script, request);
   const issues = dialectIssues(selection.planned);
-  const requests = planRequests(selection.pending, script.lines, { language: script.language });
+  const requests = planRequests(selection.pending, script.lines, {
+    language: script.language,
+    ...(request.force === true && { fresh: true }),
+  });
   let dialect = selection.planned[0]?.dialect;
   if (!dialect) {
     // Nothing selected: the voice the lines would be read in still names the dialect the agent writes in.
@@ -225,7 +230,7 @@ export async function checkScript(
   return {
     ok: !issues.some((issue) => issue.severity === "error"),
     issues,
-    estimate: await estimateOf(engine, selection, requests),
+    estimate: await estimateOf(engine, selection, requests, { force: request.force === true }),
     dialect,
   };
 }

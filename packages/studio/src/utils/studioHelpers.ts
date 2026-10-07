@@ -13,9 +13,16 @@ export interface EditingFile {
   content: string | null;
 }
 
+/** A button on a toast (Undo): it runs `run` and the toast goes away. */
+export interface ToastAction {
+  label: string;
+  run: () => void;
+}
+
 export interface AppToast {
   message: string;
   tone: "error" | "info";
+  action?: ToastAction;
 }
 
 export type RightPanelTab =

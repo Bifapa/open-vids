@@ -1,4 +1,5 @@
 import { useTranslation } from "../i18n";
+import type { ToastAction } from "../utils/studioHelpers";
 import { cn } from "./ui/cn";
 
 interface StudioToastProps {
@@ -6,11 +7,13 @@ interface StudioToastProps {
   tone?: "error" | "info";
   /** Plays the exit animation when true (owner removes the node after ~160ms). */
   leaving?: boolean;
+  /** A button after the message (Undo): it runs, then the toast is dismissed. */
+  action?: ToastAction;
   onDismiss?: () => void;
 }
 
 /** The prototype's toast: a raised `surface-2` card; an error keeps the card and inks the text. */
-export function StudioToast({ message, tone, leaving, onDismiss }: StudioToastProps) {
+export function StudioToast({ message, tone, leaving, action, onDismiss }: StudioToastProps) {
   const { t } = useTranslation();
   const isError = tone === "error";
   return (
@@ -25,6 +28,19 @@ export function StudioToast({ message, tone, leaving, onDismiss }: StudioToastPr
         )}
       >
         <span className="min-w-0 wrap-break-word py-0.5">{message}</span>
+        {action && (
+          <button
+            type="button"
+            data-testid="toast-action"
+            onClick={() => {
+              action.run();
+              onDismiss?.();
+            }}
+            className="shrink-0 rounded-sm px-2 py-0.5 text-sm font-medium text-accent transition-colors duration-hover hover:bg-surface-3 focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
+          >
+            {action.label}
+          </button>
+        )}
         {onDismiss && (
           <button
             type="button"

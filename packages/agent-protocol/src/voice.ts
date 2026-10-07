@@ -359,6 +359,8 @@ export interface SetProjectVoiceRequest {
 export interface VoiceCheckRequest {
   lineIds?: string[];
   presetId?: string;
+  /** Estimate a forced regeneration (`VoiceSynthesisRequest.force`): the lines count as paid, never as cached. */
+  force?: boolean;
 }
 
 export interface VoiceEstimate {
@@ -390,7 +392,11 @@ export interface VoiceSynthesisRequest {
   presetId?: string;
   /** Group lines into scene requests when the dialect allows; default true for Gemini. */
   scene?: boolean;
-  /** Generate again even when a current take exists (Regenerate); the cache still answers identical requests. */
+  /**
+   * Regenerate: generate the lines again even when a current take exists, and bypass the voice cache for them (the
+   * provider is asked again, its new reading replaces the cache entry and becomes a new take; earlier takes keep
+   * their own project files). TTS is not deterministic, so this gives a different reading.
+   */
   force?: boolean;
   /** Who asks, for provenance and history. */
   agent?: AgentId | "user";
@@ -400,7 +406,10 @@ export interface VoiceSynthesisRequest {
 export interface VoiceSynthesisLineResult {
   lineId: string;
   take: VoiceTake;
+  /** Served from the cache or an existing take: nothing was paid for this line. */
   cached: boolean;
+  /** The audio is identical to a take the line already had (a provider that read it exactly the same way). */
+  duplicate: boolean;
 }
 
 export interface VoiceSynthesisResult {
@@ -760,6 +769,7 @@ export function parseVoiceCheckRequest(body: unknown): Parsed<VoiceCheckRequest>
   if (lineIds.value) out.lineIds = lineIds.value;
   if (typeof value.presetId === "string" && value.presetId.length > 0)
     out.presetId = value.presetId;
+  if (typeof value.force === "boolean") out.force = value.force;
   return { ok: true, value: out };
 }
 

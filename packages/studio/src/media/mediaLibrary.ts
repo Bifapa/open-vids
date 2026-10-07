@@ -18,7 +18,11 @@ import { formatBytes, t, type TranslationKey } from "../i18n";
 import { effectivePick } from "./assetRange";
 
 export type MediaKind = "video" | "image" | "audio" | "font";
-export type MediaOrigin = "imported" | "research" | "download";
+/** Where a file came from. `generated` is the voiceover the Voiceover tab makes: it has its own Voice collection. */
+export type MediaOrigin = "imported" | "research" | "download" | "generated";
+
+/** The ledger id prefix of a generated voice take (`voice:<provider>`): provenance, but not research. */
+const GENERATED_SOURCE_PREFIX = "voice:";
 
 export interface MediaItem {
   /** Project-relative path. */
@@ -77,6 +81,7 @@ export function fileExtension(path: string): string {
 
 function originOf(provenance: ProjectSourceEntry | null): MediaOrigin {
   if (!provenance) return "imported";
+  if (provenance.source.id.startsWith(GENERATED_SOURCE_PREFIX)) return "generated";
   return provenance.retrievedBy.agent === "user" ? "download" : "research";
 }
 
@@ -209,7 +214,19 @@ export function needsAnalysis(item: MediaItem): boolean {
 
 // ── Collections, filters, search ─────────────────────────────────────────────
 
-export type MediaCollection = "all" | MediaKind | MediaOrigin | "unused" | "analysis" | "offline";
+export type MediaCollection =
+  | "all"
+  | MediaKind
+  | Exclude<MediaOrigin, "generated">
+  | "voice"
+  | "unused"
+  | "analysis"
+  | "offline";
+
+/** Generated voiceover (`assets/voice/`): the files the Voiceover tab makes, kept apart from music and effects. */
+export function isVoiceAsset(item: Pick<MediaItem, "kind" | "path">): boolean {
+  return item.kind === "audio" && item.path.replace(/\\/g, "/").startsWith("assets/voice/");
+}
 
 export function inCollection(item: MediaItem, collection: MediaCollection): boolean {
   switch (collection) {
@@ -224,6 +241,8 @@ export function inCollection(item: MediaItem, collection: MediaCollection): bool
     case "research":
     case "download":
       return item.origin === collection;
+    case "voice":
+      return isVoiceAsset(item);
     case "unused":
       return !item.used;
     case "analysis":

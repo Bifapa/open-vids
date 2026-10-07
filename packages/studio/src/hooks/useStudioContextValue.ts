@@ -10,7 +10,7 @@ interface StudioContextInput {
   projectId: string;
   activeCompPath: string | null;
   setActiveCompPath: (path: string | null) => void;
-  showToast: (message: string, tone?: "error" | "info") => void;
+  showToast: StudioContextValue["showToast"];
   previewIframeRef: React.MutableRefObject<HTMLIFrameElement | null>;
   captionEditMode: boolean;
   compositionLoading: boolean;

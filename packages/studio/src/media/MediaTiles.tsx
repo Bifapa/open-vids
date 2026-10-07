@@ -8,6 +8,7 @@ import {
 import {
   Clock,
   DownloadSimple,
+  Microphone,
   Eye,
   FilmStrip,
   Globe,
@@ -169,6 +170,11 @@ export function MediaFlags({ item, showAnalysis }: { item: MediaItem; showAnalys
           <Globe className="size-icon-sm" />
         </Flag>
       )}
+      {item.origin === "generated" && (
+        <Flag title={t("media.flag.voice")}>
+          <Microphone className="size-icon-sm" />
+        </Flag>
+      )}
       {record && item.origin === "download" && (
         <Flag
           warn={needsCheck}
@@ -270,6 +276,7 @@ function originLabel(item: MediaItem): ReactNode {
   if (item.offline)
     return <span className="text-warning">{translate("media.status.offline")}</span>;
   if (item.origin === "imported") return translate("media.origin.imported");
+  if (item.origin === "generated") return translate("media.origin.generated");
   const warn = (item.provenance?.issues.length ?? 0) > 0;
   return (
     <span className={cn(warn && "text-warning")}>

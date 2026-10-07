@@ -220,6 +220,7 @@ export class VoiceSynthesizer {
     }
 
     const requests = planRequests(selection.pending, run.script.lines, {
+      ...(request.force === true && { fresh: true }),
       ...(request.scene !== undefined && { scene: request.scene }),
       language: run.script.language,
     });
@@ -239,7 +240,7 @@ export class VoiceSynthesizer {
       // Every line already has its take: nothing is written.
       const lines = selection.current.flatMap((entry) => {
         const take = selectedTake(entry.line);
-        return take ? [{ lineId: entry.line.id, take, cached: true }] : [];
+        return take ? [{ lineId: entry.line.id, take, cached: true, duplicate: false }] : [];
       });
       return { lines, requests: 0, usdCost: 0, notes: run.notes };
     }
@@ -302,6 +303,7 @@ export class VoiceSynthesizer {
     const singles = planRequests(plan.lines, run.script.lines, {
       scene: false,
       language: run.script.language,
+      ...(run.request.force === true && { fresh: true }),
     });
     for (const single of singles) await this.generate(run, single);
   }
@@ -390,7 +392,8 @@ export class VoiceSynthesizer {
                 results.set(line.id, {
                   lineId: line.id,
                   take,
-                  cached: existing || piece.artifact.cached,
+                  cached: piece.artifact.cached,
+                  duplicate: existing,
                 });
               }
               return next;
@@ -398,7 +401,13 @@ export class VoiceSynthesizer {
             for (const entry of reused) {
               const line = lines.find((candidate) => candidate.id === entry.line.id);
               const take = line ? selectedTake(line) : null;
-              if (take) results.set(entry.line.id, { lineId: entry.line.id, take, cached: true });
+              if (take)
+                results.set(entry.line.id, {
+                  lineId: entry.line.id,
+                  take,
+                  cached: true,
+                  duplicate: false,
+                });
             }
             return { ...script, lines };
           },

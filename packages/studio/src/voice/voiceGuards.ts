@@ -322,7 +322,13 @@ export function isVoiceCheckResult(value: unknown): value is VoiceCheckResult {
 }
 
 function isSynthesisLine(value: unknown): value is VoiceSynthesisLineResult {
-  return isRecord(value) && isString(value.lineId) && isTake(value.take) && isBoolean(value.cached);
+  return (
+    isRecord(value) &&
+    isString(value.lineId) &&
+    isTake(value.take) &&
+    isBoolean(value.cached) &&
+    isBoolean(value.duplicate)
+  );
 }
 
 export function isVoiceSynthesisResult(value: unknown): value is VoiceSynthesisResult {

@@ -33,6 +33,7 @@ import { isStoryPanel, storyPlacement, type Arrangement } from "./dockWorkspace"
 import { useDockLayoutStore, type DockController, type DockSnapshot } from "./dockLayoutStore";
 import {
   PANEL_DEFINITIONS,
+  isPanelAvailable,
   isPanelId,
   panelsInZone,
   type PanelDefinition,
@@ -179,6 +180,10 @@ function restoreOrBuild(api: DockviewApi, projectId: string | null) {
   if (stored) {
     try {
       api.fromJSON(withChatFirst(stored));
+      // A tab of a beta feature this build does not have (a layout saved by a beta build) would open empty.
+      for (const panel of [...api.panels]) {
+        if (isPanelId(panel.id) && !isPanelAvailable(panel.id)) api.removePanel(panel);
+      }
       return;
     } catch {
       /* a layout the schema accepted but dockview cannot load: start over */

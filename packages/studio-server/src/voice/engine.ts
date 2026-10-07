@@ -592,10 +592,12 @@ export class VoiceEngineImpl implements VoiceEngine {
 
   async synthesize(input: EngineSynthesisInput): Promise<EngineAudio> {
     const prepared: Prepared = { ...this.prepare(input), input };
-    const hit = this.cache.entry(prepared.hash);
+    const hit = input.fresh === true ? null : this.cache.entry(prepared.hash);
     if (hit) return this.audioOf(hit, true);
     this.requireConfigured(prepared.provider);
-    return this.join(prepared.hash, input.signal, (signal) => this.generate(prepared, signal));
+    // A fresh request never joins a cached-style call already in flight: it wants its own reading.
+    const key = input.fresh === true ? `fresh\0${prepared.hash}` : prepared.hash;
+    return this.join(key, input.signal, (signal) => this.generate(prepared, signal));
   }
 
   /** Identical requests in flight share one provider call; it is cancelled when every caller has given up. */

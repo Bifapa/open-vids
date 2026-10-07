@@ -164,6 +164,43 @@ describe("the media library", () => {
     expect(items).toEqual([]);
   });
 
+  it("gives a generated voice take its own origin: no research or download count, only the Voice group", () => {
+    const voice = (asset: string, agent: "user" | "research") =>
+      record(asset, {
+        mediaKind: "audio",
+        contentType: "audio/wav",
+        source: { id: "voice:gemini", name: "Gemini", trusted: true },
+        retrievedBy: { agent, turnId: null, model: null },
+      });
+    const items = buildMediaItems({
+      assets: [
+        "assets/voice/a-12345678.wav",
+        "assets/voice/b-12345678.wav",
+        "assets/research/x.jpg",
+      ],
+      inventory: new Map(),
+      analysis: new Map(),
+      ranges: new Map(),
+      provenance: [
+        voice("assets/voice/a-12345678.wav", "research"),
+        voice("assets/voice/b-12345678.wav", "user"),
+        record("assets/research/x.jpg"),
+      ],
+      usedPaths: new Set(),
+    });
+    const of = (collection: Parameters<typeof inCollection>[1]) =>
+      paths(items.filter((item) => inCollection(item, collection)));
+    // An agent's take and a user's Regenerate alike.
+    expect(items.filter((item) => item.origin === "generated").map((item) => item.path)).toEqual([
+      "assets/voice/a-12345678.wav",
+      "assets/voice/b-12345678.wav",
+    ]);
+    expect(of("research")).toEqual(["assets/research/x.jpg"]);
+    expect(of("download")).toEqual([]);
+    expect(of("imported")).toEqual([]);
+    expect(of("voice")).toEqual(["assets/voice/a-12345678.wav", "assets/voice/b-12345678.wav"]);
+  });
+
   it("carries a picked fragment on video and audio items, never a whole-file or an image's", () => {
     const items = library();
     const rangeOf = (path: string) => items.find((item) => item.path === path)?.range;

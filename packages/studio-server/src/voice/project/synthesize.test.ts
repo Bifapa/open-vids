@@ -103,16 +103,58 @@ describe("synthesis, one request per line", () => {
     expect(again.lines.every((entry) => entry.cached)).toBe(true);
   });
 
-  it("reuses the file of an identical repeated request instead of adding a take", async () => {
+  it("serves an identical request from the cache and reuses its file", async () => {
+    const f = await setUp({ preset: OPENAI }, ["Hello there."]);
+    const first = await f.service.synthesize(f.project, { requestId: "request-0001" });
+    // The same words under a new line id: the same request hash, answered by the cache, into the same file.
+    await f.service.saveScript(f.project, { lines: [{ id: "l2", text: "Hello there." }] });
+    const again = await f.service.synthesize(f.project, { requestId: "request-0002" });
+    expect(f.engine.calls).toHaveLength(2);
+    expect(again.lines[0]?.cached).toBe(true);
+    expect(again.requests).toBe(0);
+    expect(again.lines[0]?.take.file).toBe(first.lines[0]?.take.file);
+    expect(voiceFiles(f)).toHaveLength(1);
+    expect(readLedger(f.project.dir).records).toHaveLength(1);
+  });
+
+  it("force regenerates: the provider is asked again and the take is a new reading in its own file", async () => {
     const f = await setUp({ preset: OPENAI }, ["Hello there."]);
     const first = await f.service.synthesize(f.project, { requestId: "request-0001" });
     const again = await f.service.synthesize(f.project, { requestId: "request-0002", force: true });
-    expect(again.lines[0]?.cached).toBe(true);
-    expect(again.requests).toBe(0);
+    expect(f.engine.calls).toHaveLength(2);
+    expect(f.engine.calls[1]?.fresh).toBe(true);
+    expect(again.requests).toBe(1);
+    expect(again.lines[0]?.cached).toBe(false);
+    expect(again.lines[0]?.take.id).not.toBe(first.lines[0]?.take.id);
+    expect(again.lines[0]?.take.file).not.toBe(first.lines[0]?.take.file);
+    expect(voiceFiles(f)).toHaveLength(2);
+    const line = readScript(f.project.dir).lines[0];
+    expect(line?.takes).toHaveLength(2);
+    expect(line?.selectedTakeId).toBe(again.lines[0]?.take.id);
+  });
+
+  it("a forced regenerate that reads the same bytes is paid, not cached, and adds no take", async () => {
+    const f = await setUp({ preset: OPENAI }, ["Hello there."]);
+    f.engine.deterministic = true;
+    const first = await f.service.synthesize(f.project, { requestId: "request-0001" });
+    const again = await f.service.synthesize(f.project, { requestId: "request-0002", force: true });
+    expect(f.engine.calls).toHaveLength(2);
+    expect(again.lines[0]).toMatchObject({ cached: false, duplicate: true });
     expect(again.lines[0]?.take.id).toBe(first.lines[0]?.take.id);
-    expect(voiceFiles(f)).toHaveLength(1);
     expect(readScript(f.project.dir).lines[0]?.takes).toHaveLength(1);
-    expect(readLedger(f.project.dir).records).toHaveLength(1);
+  });
+
+  it("check with force counts the line as paid, not cached", async () => {
+    const f = await setUp({ preset: OPENAI }, ["Hello there."]);
+    await f.service.synthesize(f.project, { requestId: "request-0001" });
+    expect((await f.service.check(f.project, {})).estimate).toMatchObject({
+      cachedLines: 1,
+      requests: 0,
+    });
+    const forced = await f.service.check(f.project, { force: true });
+    expect(forced.estimate).toMatchObject({ cachedLines: 0, requests: 1 });
+    expect(forced.estimate.usdCost).toBeGreaterThan(0);
+    expect(f.engine.calls).toHaveLength(1);
   });
 
   it("adds a take when the line's text changed and keeps the old one selectable", async () => {

@@ -37,7 +37,7 @@ import { spanOf } from "./propertyPanelAudioFxGroupUtils.js";
 import type { AudioTrackOption } from "./propertyPanelFxCarveModule.js";
 
 /** Lanes belonging to nodes the carve generated, which a re-run replaces. */
-function withoutCarveLanes(automation: HfAutomation, chain: HfAudioFxChain): HfAutomation {
+export function withoutCarveLanes(automation: HfAutomation, chain: HfAudioFxChain): HfAutomation {
   const prefixes = chain.nodes.filter((n) => n.fromCarve && n.id).map((n) => `fx.${n.id}.`);
   if (prefixes.length === 0) return automation;
   return {
@@ -75,7 +75,7 @@ function carveNeedsReanalysis(
  * what lets the src and the start be non-null by construction downstream
  * instead of by assertion.
  */
-function resolveCarveVoices(
+export function resolveCarveVoices(
   doc: Document,
   sources: readonly string[],
 ): { src: string; start: string | null }[] {

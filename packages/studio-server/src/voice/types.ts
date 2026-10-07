@@ -98,5 +98,10 @@ export interface EngineSynthesisInput {
   previousText?: string;
   nextText?: string;
   language?: string;
+  /**
+   * Skip the cache read: the provider is asked again and its answer replaces the cache entry (Regenerate: TTS is not
+   * deterministic, the user wants a different reading). Not part of the request hash. Default false.
+   */
+  fresh?: boolean;
   signal: AbortSignal;
 }

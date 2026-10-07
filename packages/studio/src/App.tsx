@@ -521,6 +521,8 @@ export function StudioApp({ readOnlyPreview = false, readOnlyPreviewReason }: St
                         onAutoGroupCarveSources={timelineEditing.handleAutoGroupCarveSources}
                         onAddMediaOverlay={handleAddMediaOverlay}
                         onAddAssetToTimeline={handleAddAssetAtPlayhead}
+                        onTimelineGroupMove={timelineEditing.handleTimelineGroupMove}
+                        pendingTimelineEditPathRef={pendingTimelineEditPathRef}
                       />
                     </>
                   }

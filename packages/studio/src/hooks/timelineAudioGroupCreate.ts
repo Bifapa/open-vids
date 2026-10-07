@@ -106,7 +106,7 @@ function escapeAttr(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
 }
 
-function insertGroupElement(html: string, groupId: string, label?: string): string {
+export function insertGroupElement(html: string, groupId: string, label?: string): string {
   const existing = readTagSnippetByTarget(html, { id: groupId });
   if (existing !== undefined) {
     // Only OUR tag counts as "already there". The id was minted against the

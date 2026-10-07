@@ -8,6 +8,7 @@
  * Pure functions (no React, no store reads) — testable in isolation.
  */
 
+import { VOICE_LINE_ATTRIBUTE } from "@hyperframes/agent-protocol";
 import type { TimelineElement } from "../store/playerStore";
 import type { ClipManifestClip, IframeWindow, TimelineLike } from "./playbackTypes";
 import { resolveCssStackingContextId } from "@hyperframes/core/runtime/stacking-context";
@@ -145,6 +146,8 @@ export function createTimelineElementFromManifestClip(params: {
     if (hostEl.hasAttribute("data-hidden")) entry.hidden = true;
     const timelineRole = hostEl.getAttribute("data-timeline-role");
     if (timelineRole) entry.timelineRole = timelineRole;
+    const voiceLine = hostEl.getAttribute(VOICE_LINE_ATTRIBUTE);
+    if (voiceLine) entry.voiceLine = voiceLine;
     const audioGroup = hostEl.getAttribute("data-audio-group");
     if (audioGroup) {
       entry.audioGroup = audioGroup;
@@ -324,6 +327,8 @@ export function parseTimelineFromDOM(
 
     const timelineRole = el.getAttribute("data-timeline-role");
     if (timelineRole) entry.timelineRole = timelineRole;
+    const domVoiceLine = el.getAttribute(VOICE_LINE_ATTRIBUTE);
+    if (domVoiceLine) entry.voiceLine = domVoiceLine;
 
     const domAudioGroup = el.getAttribute("data-audio-group");
     if (domAudioGroup) {

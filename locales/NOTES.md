@@ -1588,3 +1588,22 @@ could be a noun). Keys are listed by area; a key that is not here reads as it sa
 - `voice.chat.setup.ask` — {agent} is the agent's name (Main, Audio…), the sentence subject.
 - `voice.error.rate_limited.retry` — Russian needs one/few/many/other plural forms for seconds.
 - `chat.permission.voiceGeneration` — Permission card sentence. <service/> is replaced by the voice service's name (Gemini…).
+
+## studio-voiceover
+
+- `shell.dock.panel.voiceover` — Name of the dock tab (Window menu and tab strip) of the project’s voiceover script (beta).
+- `media.nav.group.voice` — Heading of the Media library nav group that holds the generated-voiceover collection (beta).
+- `media.collection.voice` — Media library collection of the generated voiceover audio files (assets/voice).
+- `voice.line.speakerText` — Label of the field holding what the narrator reads, tags included (as opposed to the caption text).
+- `voice.line.caption` — Label of the field holding the line’s source text, which captions show.
+- `voice.line.style` — Label of the per-line delivery instruction (tone, pace); the same field the voice setup calls style.
+- `voice.line.takeStatus` — {seconds} is the take’s length with one decimal; “s” is seconds.
+- `voice.take.title` — Heading of the list of generated recordings of one line; a take is one recording.
+- `voice.take.use` — Button: switch the line to this take (nothing is paid).
+- `voice.take.olderText` — Chip on a take that was made from an earlier version of the line’s text.
+- `voice.generate.summary` — {duration} is a formatted length such as 12 s; {cost} is a price or the word for unknown.
+- `voice.carve.button` — Button: lowers the frequencies of every music track that the voiceover masks, like the inspector’s voiceover carve (“Voiceover carve”).
+- `voice.toast.shifted` — Toast after a voiceover take changed length and the clips after it on the track moved by the difference (ripple edit). An Undo button follows it.
+- `voice.issue.ssml_unsupported` — “break” stands for the SSML pause tag, written without angle brackets.
+- `voice.toast.laterClipLocked` — Error toast: with ripple editing on, a take of another length would move the clips after it on the track, but one of them is locked, so nothing changed. {clips} is a comma-separated list of the locked clips’ names.
+- `media.origin.generated` — Origin column of the Media library for a voiceover file the app generated (not imported, researched or downloaded).

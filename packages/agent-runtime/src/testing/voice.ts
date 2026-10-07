@@ -91,6 +91,7 @@ export class FakeVoiceHost implements VoiceHost {
   dialect: VoiceDialect = VOICE_DIALECTS["gemini-tts"];
   voice: VoicePreset | null = null;
   lines: FakeLine[] = [];
+  language: string | null = null;
   /** Cost the check reports per line to generate, and the cost of each synthesized line. */
   usdPerLine: number | null = 0.002;
   secondsPerLine = 2.5;
@@ -144,6 +145,7 @@ export class FakeVoiceHost implements VoiceHost {
 
   async saveScript(request: SaveVoiceScriptRequest): Promise<VoiceScriptView> {
     this.record("saveScript", request);
+    if (request.language !== undefined) this.language = request.language;
     let generated = 0;
     this.lines = request.lines.map((input) => {
       const id = input.id ?? `line-${++generated}`;
@@ -223,7 +225,7 @@ export class FakeVoiceHost implements VoiceHost {
         total: ids.length,
         lineId: id,
       });
-      return { lineId: id, take, cached: false };
+      return { lineId: id, take, cached: false, duplicate: false };
     });
     return {
       lines,
@@ -239,7 +241,7 @@ export class FakeVoiceHost implements VoiceHost {
 
   private view(): VoiceScriptView {
     return {
-      language: null,
+      language: this.language,
       voice: this.voice,
       dialect: this.voice ? this.dialect : null,
       lines: this.lines.map(

@@ -18,6 +18,10 @@ import { StoryPanel } from "../story/StoryPanel";
 import { SettingsDialog } from "./settings/SettingsDialog";
 import { DesignHost } from "../design/DesignHost";
 import { VoiceHost } from "../voice/VoiceHost";
+import { VoiceoverPanel } from "../voice/panel/VoiceoverPanel";
+import { useVoiceClipOps } from "../voice/clip/useVoiceClipOps";
+import { VoiceClipOpsProvider } from "../voice/clip/voiceClipOpsContext";
+import { isBetaFeatureEnabled } from "../betaFeatures";
 import { studioStoryStore } from "../story/storyContext";
 import { SourcesPanel } from "../research/SourcesPanel";
 import { studioSourcesStore } from "../research/researchContext";
@@ -64,9 +68,11 @@ export function StudioRightPanels({
   onAutoGroupCarveSources,
   onAddMediaOverlay,
   onAddAssetToTimeline,
+  onTimelineGroupMove,
+  pendingTimelineEditPathRef,
 }: StudioRightPanelsProps) {
   const { t } = useTranslation();
-  const { previewIframeRef, projectId, activeCompPath, showToast, renderQueue } =
+  const { previewIframeRef, projectId, activeCompPath, showToast, renderQueue, handleUndo } =
     useStudioShellContext();
   const { captionEditMode, refreshKey } = useStudioPlaybackContext();
 
@@ -152,6 +158,21 @@ export function StudioRightPanels({
     coalesceKey: activeCompPath ? `slideshow-notes:${activeCompPath}` : "slideshow-notes",
   });
 
+  // The voiceover tab and the voice clip's inspector change the timeline through these (one undo entry each).
+  const voiceClipOps = useVoiceClipOps({
+    projectId,
+    activeCompPath,
+    previewIframeRef,
+    showToast,
+    undo: handleUndo,
+    writeProjectFile,
+    recordEdit,
+    reloadPreview,
+    forceReloadSdkSession,
+    pendingTimelineEditPathRef,
+    onTimelineGroupMove,
+    recordingActive: recordingState !== undefined && recordingState !== "idle",
+  });
   const renderJobs = renderQueue.jobs as RenderJob[];
   const slideshowVisible = useDockLayoutStore((state) => state.visiblePanels.has("slideshow"));
   const { isSlideshowComposition, slideshowScenes } = useSlideshowTabState({
@@ -327,7 +348,7 @@ export function StudioRightPanels({
   }
 
   return (
-    <>
+    <VoiceClipOpsProvider value={voiceClipOps}>
       <Dock.Panel id="design">{designBody}</Dock.Panel>
       <Dock.Panel id="layers">
         <LayersPanel />
@@ -375,9 +396,14 @@ export function StudioRightPanels({
       <Dock.Panel id="sources">
         <SourcesPanel />
       </Dock.Panel>
+      {isBetaFeatureEnabled("voiceover") && (
+        <Dock.Panel id="voiceover">
+          <VoiceoverPanel projectId={projectId} />
+        </Dock.Panel>
+      )}
       <SettingsDialog agentStore={agentStore} />
       <DesignHost projectId={projectId} agentStore={agentStore} />
       <VoiceHost />
-    </>
+    </VoiceClipOpsProvider>
   );
 }

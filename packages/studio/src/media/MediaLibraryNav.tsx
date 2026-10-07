@@ -9,12 +9,14 @@ import {
   Image as ImageIcon,
   LinkBreak,
   MagnifyingGlass,
+  Microphone,
   MusicNotes,
   ShieldCheck,
   SquaresFour,
   TextAa,
   Tray,
 } from "@phosphor-icons/react";
+import { isBetaFeatureEnabled } from "../betaFeatures";
 import { Meter, cn } from "../components/ui";
 import { formatNumber, useTranslation, type TranslationKey } from "../i18n";
 import {
@@ -24,6 +26,7 @@ import {
   type MediaCollection,
   type MediaItem,
 } from "./mediaLibrary";
+import { openVoiceoverTab } from "../voice/openVoiceoverTab";
 import type { AnalysisQueueState } from "./useMediaLibrary";
 
 type NavKey = MediaCollection | "sources";
@@ -51,6 +54,10 @@ const GROUPS: ReadonlyArray<{
     ],
   },
   {
+    label: "media.nav.group.voice",
+    items: [{ key: "voice", name: "media.collection.voice", icon: <Microphone /> }],
+  },
+  {
     label: "media.nav.group.smart",
     items: [
       { key: "unused", name: "media.collection.unused", icon: <Circle /> },
@@ -73,6 +80,7 @@ export const COLLECTION_LABELS = {
   imported: "media.collection.imported",
   research: "media.collection.research",
   download: "media.collection.download",
+  voice: "media.collection.voice",
   unused: "media.collection.unused",
   analysis: "media.collection.analysis",
   offline: "media.status.offline",
@@ -197,7 +205,9 @@ export function MediaLibraryNav({
         className="flex min-h-0 flex-1 flex-col gap-px overflow-y-auto px-1.5 pt-1 pb-2.5"
         data-testid="media-library-nav"
       >
-        {GROUPS.map((group, index) => (
+        {GROUPS.filter(
+          (group) => group.label !== "media.nav.group.voice" || isBetaFeatureEnabled("voiceover"),
+        ).map((group, index) => (
           <div key={group.label} className="contents">
             <div
               className={cn(
@@ -246,6 +256,16 @@ export function MediaLibraryNav({
                 </button>
               );
             })}
+            {group.label === "media.nav.group.voice" && (
+              <button
+                type="button"
+                data-testid="media-open-voiceover"
+                onClick={openVoiceoverTab}
+                className="flex h-nav w-full flex-none items-center gap-2 rounded-md px-2 text-left text-sm text-fg-2 outline-hidden hover:bg-surface-1 hover:text-fg focus-visible:outline-solid focus-visible:outline-2 focus-visible:-outline-offset-1 focus-visible:outline-accent"
+              >
+                <span className="min-w-0 flex-1 truncate">{t("media.nav.openVoiceover")}</span>
+              </button>
+            )}
           </div>
         ))}
       </nav>

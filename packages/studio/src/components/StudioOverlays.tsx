@@ -44,6 +44,7 @@ export function StudioOverlays({
             key={toast.id}
             message={toast.message}
             tone={toast.tone}
+            action={toast.action}
             leaving={toast.leaving}
             onDismiss={() => dismissToast(toast.id)}
           />

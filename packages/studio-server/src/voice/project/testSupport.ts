@@ -62,6 +62,8 @@ export class FakeEngine implements VoiceEngine {
   /** Every synthesis after this many calls fails with `failure`. */
   failAfter: number | null = null;
   failure: Error = new Error("provider down");
+  /** A provider that reads the same request into the same bytes every time (a local TTS server). */
+  deterministic = false;
   private written = 0;
 
   /** The cache lost its entries (cleared, or the project was opened on another machine). */
@@ -102,15 +104,19 @@ export class FakeEngine implements VoiceEngine {
       ...(input.previousText !== undefined && { previousText: input.previousText }),
       ...(input.nextText !== undefined && { nextText: input.nextText }),
       ...(input.language !== undefined && { language: input.language }),
+      ...(input.fresh === true && { fresh: true }),
     };
     this.calls.push(request);
     const hash = this.hashOf(request);
-    const known = this.cache.get(hash);
+    const known = request.fresh === true ? undefined : this.cache.get(hash);
     if (known) return { ...known, cached: true };
     const path = join(this.cacheDir, `${hash}.wav`);
     this.written += 1;
-    // Like a real model: the same request does not give the same bytes twice.
-    writeFileSync(path, `RIFF fake audio ${hash} take ${this.written}`);
+    // Like a real model: the same request does not give the same bytes twice (unless `deterministic`).
+    writeFileSync(
+      path,
+      `RIFF fake audio ${hash}${this.deterministic ? "" : ` take ${this.written}`}`,
+    );
     const audio: EngineAudio = {
       path,
       hash,

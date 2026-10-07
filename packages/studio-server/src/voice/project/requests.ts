@@ -118,7 +118,7 @@ function neighbour(
 export function planRequests(
   lines: readonly PlannedLine[],
   script: readonly VoiceLine[],
-  options: { scene?: boolean; language: string | null },
+  options: { scene?: boolean; language: string | null; fresh?: boolean },
 ): RequestPlan[] {
   const groups: PlannedLine[][] = [];
   for (const planned of lines) {
@@ -168,6 +168,7 @@ export function planRequests(
         ...(previousText !== undefined && { previousText }),
         ...(nextText !== undefined && { nextText }),
         ...(options.language !== null && { language: options.language }),
+        ...(options.fresh === true && { fresh: true }),
       },
     };
   });

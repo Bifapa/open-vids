@@ -133,3 +133,16 @@ the unit test on the pure function underneath.
   `cross-project` list, asked only while the create dialog is open; none or a failure means the
   option is hidden). The shell opens the create dialog with
   `openvidsDesign=create[&openvidsDesignSource=…]`, read once and stripped (`designParam.ts`).
+- **Voiceover is a beta surface in `src/voice/`** (`isBetaFeatureEnabled("voiceover")`; with the flag off the
+  `voiceover` dock tab is not registered or offered in Window, the media nav's Voice group and the inspector's
+  module are absent). One script store (`voice/script/voiceScriptStore.ts`, in `VoiceProvider`) feeds the tab
+  (`voice/panel/VoiceoverPanel`) and the clip's inspector module (`components/editor/propertyPanelVoiceGroup`); a
+  clip is a voice clip by `data-ov-voice-line` (`TimelineElement.voiceLine`). Changing a take rewrites every clip of
+  the line (`voice/clip/voiceClipOps.ts`: file, in-point, length) and, with ripple on, shifts the later clips of the
+  track (`player/components/timelineDurationRipple.ts`) in ONE undo entry (shared `coalesceKey`; with ripple on, a
+  locked later clip refuses the whole take change, like delete-ripple). "Add to timeline" and the music carve go
+  through Studio's own history writes, never the editing route. Every write control reads `useVoiceEditLock()` and is
+  off while an agent turn runs. Paid generation is always estimate → confirm → progress/cancel
+  (`voice/panel/VoiceGenerate`); Regenerate sends `force: true` (a new reading past the cache). The setup window is
+  drawn only from the server's `VoiceProviderControls` (a missing capability is a missing control, never a disabled
+  one), and Studio never sends a custom server address (`desktop_only`: the Projects page sets it).
