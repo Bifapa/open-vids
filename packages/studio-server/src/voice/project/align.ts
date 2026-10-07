@@ -57,7 +57,10 @@ function withinOneEdit(a: string, b: string): boolean {
 }
 
 /** Pairs (script token, recognised word) of a longest common subsequence. */
-function lcsPairs(script: readonly string[], heard: readonly string[]): Array<[number, number]> {
+export function lcsPairs(
+  script: readonly string[],
+  heard: readonly string[],
+): Array<[number, number]> {
   const width = heard.length + 1;
   const table = new Uint16Array((script.length + 1) * width);
   for (let i = script.length - 1; i >= 0; i -= 1) {

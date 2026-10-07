@@ -348,7 +348,8 @@ export function isVoiceSynthesisProgress(value: unknown): value is VoiceSynthesi
     oneOf(["running", "done", "failed", "cancelled"] as const)(value.state) &&
     isNumber(value.done) &&
     isNumber(value.total) &&
-    nullable(isString)(value.lineId)
+    nullable(isString)(value.lineId) &&
+    (value.waitingUntil === undefined || isNumber(value.waitingUntil))
   );
 }
 
@@ -382,3 +383,16 @@ export const isCancelAnswer: Guard<{ requestId: string; state: string }> = (
   value,
 ): value is { requestId: string; state: string } =>
   isRecord(value) && isString(value.requestId) && isString(value.state);
+
+/** What `POST /editing/apply` answers for `captions_from_voiceover`: the files written and the batch's warnings. */
+export interface CaptionsApplyAnswer {
+  changedFiles: string[];
+  warnings?: string[];
+}
+
+export const isCaptionsApplyAnswer: Guard<CaptionsApplyAnswer> = (
+  value,
+): value is CaptionsApplyAnswer =>
+  isRecord(value) &&
+  isStringList(value.changedFiles) &&
+  (value.warnings === undefined || isStringList(value.warnings));

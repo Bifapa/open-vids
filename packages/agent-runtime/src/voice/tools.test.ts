@@ -109,6 +109,10 @@ describe("voice tool availability", () => {
     const onText = JSON.stringify([on.description, on.parameters]);
     expect(onText).toContain("voiceLine");
     expect(JSON.stringify(on.parameters)).toContain('"required":["op","start","track"]');
+    // The captions-from-voiceover operation follows the same gate: schema, guide and name.
+    expect(offText).not.toContain("captions_from_voiceover");
+    expect(JSON.stringify(on.parameters)).toContain('"captions_from_voiceover"');
+    expect(on.description).toContain("- captions_from_voiceover:");
     expect(on.name).toBe(off.name);
   });
 
@@ -161,6 +165,9 @@ describe("voice prompt text", () => {
     expect(specialistInstructions("audio", { voice: true })).toContain("voiceLine");
     expect(specialistInstructions("audio")).not.toContain("voiceover");
     expect(specialistInstructions("editor", { voice: true })).not.toContain("generate_voiceover");
+    expect(specialistInstructions("editor", { voice: true })).toContain("captions_from_voiceover");
+    expect(specialistInstructions("audio", { voice: true })).toContain("captions_from_voiceover");
+    expect(specialistInstructions("editor")).not.toContain("captions_from_voiceover");
   });
 
   it("gives the Director the Audio duties when Audio is off", () => {

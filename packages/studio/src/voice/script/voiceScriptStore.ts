@@ -39,6 +39,8 @@ export interface VoiceJob {
   total: number;
   /** The line being generated now. */
   lineId: string | null;
+  /** While the provider's per-minute limit is waited out: when the request asks again (epoch ms). */
+  waitingUntil: number | null;
   cancelling: boolean;
 }
 
@@ -311,6 +313,7 @@ export function createVoiceScriptStore(client: VoiceClient): VoiceScriptStore {
             done: 0,
             total: 0,
             lineId: null,
+            waitingUntil: null,
             cancelling: false,
           },
         });
@@ -326,6 +329,7 @@ export function createVoiceScriptStore(client: VoiceClient): VoiceScriptStore {
                   done: progress.done,
                   total: progress.total,
                   lineId: progress.lineId,
+                  waitingUntil: progress.waitingUntil ?? null,
                 },
               });
             })

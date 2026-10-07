@@ -35,7 +35,7 @@ export interface EditEnv {
   compositionPath: string;
   adapter: Pick<
     StudioApiAdapter,
-    "listRegistryCatalog" | "installRegistryBlock" | "captionSkinsDir"
+    "listRegistryCatalog" | "installRegistryBlock" | "captionSkinsDir" | "transcribeMedia"
   >;
   facts: MediaFacts;
   /**
@@ -45,6 +45,8 @@ export interface EditEnv {
   turnId?: string;
   /** The analysis cache, for `captions_from_transcript`. */
   analysis?: Pick<AnalysisService, "sourceData">;
+  /** Stops work an operation waits on (speech recognition for `captions_from_voiceover`); set by `applyEdits`. */
+  signal?: AbortSignal;
 }
 
 /** The state a batch builds up in memory; nothing reaches disk until every operation has succeeded. */
@@ -68,6 +70,11 @@ export interface Batch {
   warnings: string[];
   /** The composition held the untouched template placeholder when the batch started. */
   hadPlaceholder: boolean;
+  /**
+   * Writes outside the batch's own files that only make sense once it is in (a cache an operation filled while
+   * running). Run after a successful, non-dry-run commit; a dry run or a refused batch never runs them.
+   */
+  afterCommit: Array<() => Promise<void>>;
 }
 
 /**

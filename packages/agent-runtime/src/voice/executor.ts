@@ -8,6 +8,7 @@ import {
   type AgentId,
   type Parsed,
   type SaveVoiceScriptRequest,
+  type VoiceLineInput,
   type SpecialistId,
   type VoiceDialect,
   type VoicePreset,
@@ -98,6 +99,54 @@ function parseSetupArgs(args: unknown): Parsed<SetupArgs> {
 interface GenerateArgs {
   script: SaveVoiceScriptRequest;
   lineIds: string[] | undefined;
+}
+
+/**
+ * The script after a `generate_voiceover` call: the call's lines are added or changed, nothing else is touched. A line
+ * with the id of an existing line replaces it in place (its takes survive when the server sees an unchanged text); a
+ * line without an id that has the exact text of an unclaimed existing line is that line; any other line is appended.
+ * `passed` holds the positions (in the merged script) of the lines the call carried.
+ */
+function upsertLines(
+  current: VoiceScriptView,
+  call: SaveVoiceScriptRequest,
+): { request: SaveVoiceScriptRequest; passed: Set<number> } {
+  const lines: VoiceLineInput[] = current.lines.map((line) => ({
+    id: line.id,
+    text: line.text,
+    speakerText: line.speakerText,
+    style: line.style,
+  }));
+  const claimed = new Set(call.lines.flatMap((line) => (line.id === undefined ? [] : [line.id])));
+  const passed = new Set<number>();
+  for (const input of call.lines) {
+    let index =
+      input.id === undefined
+        ? lines.findIndex(
+            (line) => line.id !== undefined && !claimed.has(line.id) && line.text === input.text,
+          )
+        : lines.findIndex((line) => line.id === input.id);
+    const existing = index >= 0 ? lines[index] : undefined;
+    if (existing?.id !== undefined) {
+      claimed.add(existing.id);
+      // The same text without its own delivery keeps the delivery it had (no spurious regeneration).
+      const same = existing.text === input.text;
+      lines[index] = {
+        ...input,
+        id: existing.id,
+        ...(input.speakerText === undefined && same && { speakerText: existing.speakerText }),
+        ...(input.style === undefined && same && { style: existing.style }),
+      };
+    } else {
+      lines.push(input);
+      index = lines.length - 1;
+    }
+    passed.add(index);
+  }
+  return {
+    request: { ...(call.language !== undefined && { language: call.language }), lines },
+    passed,
+  };
 }
 
 function parseGenerateArgs(args: unknown): Parsed<GenerateArgs> {
@@ -286,8 +335,10 @@ export class TurnVoice {
         "This runtime cannot ask the user to allow a paid generation, so no voiceover can be generated.",
       );
 
-    // 1. The script is saved first, so what the user hears and what the project holds are the same text.
-    const saved = await host.saveScript(parsed.value.script, signal);
+    // 1. The script is updated first, so what the user hears and what the project holds are the same text. The call
+    // carries the lines it adds or changes; every other line of the project's script stays as it is.
+    const merged = upsertLines(await host.script(signal), parsed.value.script);
+    const saved = await host.saveScript(merged.request, signal);
     if (!saved.voice) return refuse(NO_VOICE);
     const unknown = (parsed.value.lineIds ?? []).filter(
       (id) => !saved.lines.some((line) => line.id === id),
@@ -296,9 +347,20 @@ export class TurnVoice {
       return refuse(
         `lineIds names lines that are not in the script: ${unknown.join(", ")}. The script's line ids: ${saved.lines.map((line) => line.id).join(", ")}.`,
       );
-    const scope = parsed.value.lineIds ?? saved.lines.map((line) => line.id);
+    const passed = new Set(
+      [...merged.passed].flatMap((index) => {
+        const line = saved.lines[index];
+        return line ? [line.id] : [];
+      }),
+    );
+    const scope =
+      parsed.value.lineIds ??
+      saved.lines.filter((line) => passed.has(line.id)).map((line) => line.id);
     const wanted =
-      parsed.value.lineIds ?? saved.lines.filter(needsGeneration).map((line) => line.id);
+      parsed.value.lineIds ??
+      saved.lines
+        .filter((line) => passed.has(line.id) && needsGeneration(line))
+        .map((line) => line.id);
     if (wanted.length === 0)
       return {
         text: `Every line already has a current take; nothing was generated.\n${formatGenerated({
@@ -372,7 +434,7 @@ export class TurnVoice {
     );
     if (verdict.state === "changes")
       return {
-        text: `The user listened to the pilot line ${pilotId} and wants it different: ${verdict.feedback ?? "(no note)"}\nNothing else was generated; the pilot take is kept. Change the script (speakerText, style or wording of the lines this affects) and call generate_voiceover again with the full lines: lines whose text and style did not change keep their takes.`,
+        text: `The user listened to the pilot line ${pilotId} and wants it different: ${verdict.feedback ?? "(no note)"}\nNothing else was generated; the pilot take is kept. Change the script (speakerText, style or wording of the lines this affects) and call generate_voiceover again with the lines you changed: a line whose text and style did not change keeps its takes, and the other lines of the script stay as they are.`,
       };
     if (verdict.state !== "approved") return refuse(PILOT_UNANSWERED);
 

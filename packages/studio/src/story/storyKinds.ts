@@ -154,6 +154,7 @@ const FIELD_LABEL_KEYS: Readonly<Record<string, TranslationKey>> = {
   captions: "story.field.captions",
   graphics: "story.field.graphics",
   audio: "story.field.audio",
+  narration: "story.field.narration",
   previewFrame: "story.field.previewFrame",
   asset: "story.field.asset",
   sourceIn: "story.field.sourceIn",

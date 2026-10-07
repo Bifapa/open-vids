@@ -5175,5 +5175,19 @@
   "voice.toast.laterClipLocked": "Later clips on this track are locked ({clips}), so the take wasn’t changed. Unlock them or turn off ripple editing.",
   "media.origin.generated": "Generated",
   "media.flag.voice": "Generated voiceover",
-  "media.inspector.generatedBy": "Generated voiceover · {date}"
+  "media.inspector.generatedBy": "Generated voiceover · {date}",
+  "voice.catalog.noLanguage": "No voices are labelled for {language}; these voices can still speak it — listen to a sample.",
+  "story.field.narration": "Narration",
+  "story.chapter.narrationPlaceholder": "What the narrator says over this chapter",
+  "story.chapter.narrationHint": "Build Story generates the voice from this text and places it at the start of the chapter.",
+  "story.sync.role.narration": "Narration",
+  "voice.captions.button": "Add captions",
+  "voice.captions.hint": "Writes captions from the voiceover on the timeline: each line’s own text, timed by the words the narrator spoke.",
+  "voice.captions.reason.unavailable": "The timeline isn’t available here.",
+  "voice.captions.reason.noClips": "Add a voiceover line to the timeline first.",
+  "voice.history.addCaptions": "Add captions from the voiceover",
+  "voice.toast.captionsAdded": "Captions added from the voiceover.",
+  "voice.toast.captionsSkipped": "{count, plural, one {# voiceover clip was} other {# voiceover clips were}} not captioned.",
+  "voice.toast.captionsNone": "There was nothing to caption.",
+  "voice.generate.waiting": "Waiting for the provider’s limit ({seconds}s)…"
 }

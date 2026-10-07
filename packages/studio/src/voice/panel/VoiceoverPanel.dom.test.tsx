@@ -103,6 +103,7 @@ function clipOps() {
     ),
     addLines: vi.fn(async () => ({ added: 1, failure: null })),
     carveMusic: vi.fn(async () => ({ kind: "carved" as const, beds: 1 })),
+    addCaptions: vi.fn(async () => ({ kind: "added" as const, files: 2, skipped: 0 })),
   };
 }
 
@@ -233,6 +234,42 @@ describe("Voiceover panel", () => {
     expect(byTestId(first, "voice-line-speaker-field")).toBeNull();
     // Playing stays open.
     expect(first.querySelector('[aria-label="Play line 1"]')?.hasAttribute("disabled")).toBe(false);
+  });
+
+  it("adds captions from the voiceover once a voice clip is on the timeline, and says why not before", async () => {
+    const ops = clipOps();
+    const { host } = mountVoice(
+      <VoiceClipOpsProvider value={ops}>
+        <VoiceoverPanel projectId="p1" />
+      </VoiceClipOpsProvider>,
+      { script: SCRIPT },
+    );
+    await settle();
+    expect(byTestId(host, "voice-captions-button")?.hasAttribute("disabled")).toBe(true);
+    expect(byTestId(host, "voice-captions-reason")?.textContent).toBe(
+      "Add a voiceover line to the timeline first.",
+    );
+    usePlayerStore.getState().setElements([
+      {
+        id: "a",
+        key: "a",
+        tag: "audio",
+        start: 0,
+        duration: 3,
+        track: 2,
+        authoredTrack: 2,
+        voiceLine: "l1",
+      },
+    ]);
+    await settle();
+    expect(byTestId(host, "voice-captions-button")?.hasAttribute("disabled")).toBe(false);
+    await pressAndSettle(byTestId(host, "voice-captions-button"));
+    expect(ops.addCaptions).toHaveBeenCalledTimes(1);
+    // An agent turn editing the timeline locks it with the reason.
+    setAgentTurnRunning(true);
+    await settle();
+    expect(byTestId(host, "voice-captions-button")?.hasAttribute("disabled")).toBe(true);
+    expect(byTestId(host, "voice-captions-reason")?.textContent).toContain("agent is editing");
   });
 
   it("renders nothing outside the beta channel", async () => {

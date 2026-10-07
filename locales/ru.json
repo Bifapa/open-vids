@@ -5175,5 +5175,19 @@
   "voice.toast.laterClipLocked": "Следующие клипы на дорожке заблокированы ({clips}), поэтому дубль не изменён. Разблокируйте их или выключите ripple-монтаж.",
   "media.origin.generated": "Сгенерировано",
   "media.flag.voice": "Сгенерированная озвучка",
-  "media.inspector.generatedBy": "Сгенерированная озвучка · {date}"
+  "media.inspector.generatedBy": "Сгенерированная озвучка · {date}",
+  "voice.catalog.noLanguage": "Нет голосов с пометкой о языке «{language}», но эти голоса тоже могут на нём говорить — послушайте образец.",
+  "story.field.narration": "Закадровый текст",
+  "story.chapter.narrationPlaceholder": "Что диктор говорит в этой главе",
+  "story.chapter.narrationHint": "Сборка истории озвучит этот текст и поставит голос в начало главы.",
+  "story.sync.role.narration": "Закадровый голос",
+  "voice.captions.button": "Добавить субтитры",
+  "voice.captions.hint": "Создаёт субтитры из озвучки на таймлайне: текст каждой реплики, привязанный ко времени слов диктора.",
+  "voice.captions.reason.unavailable": "Таймлайн здесь недоступен.",
+  "voice.captions.reason.noClips": "Сначала добавьте реплику озвучки на таймлайн.",
+  "voice.history.addCaptions": "Добавить субтитры из озвучки",
+  "voice.toast.captionsAdded": "Субтитры из озвучки добавлены.",
+  "voice.toast.captionsSkipped": "{count, plural, one {# клип озвучки остался} few {# клипа озвучки остались} many {# клипов озвучки остались} other {# клипа озвучки остались}} без субтитров.",
+  "voice.toast.captionsNone": "Субтитры добавлять не к чему.",
+  "voice.generate.waiting": "Ждём лимит провайдера ({seconds} с)…"
 }

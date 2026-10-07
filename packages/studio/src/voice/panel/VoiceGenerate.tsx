@@ -94,6 +94,7 @@ export function VoiceGenerate({
 
   if (phase.kind === "running") {
     const cancelling = job?.cancelling === true;
+    const waiting = job?.waitingUntil ?? null;
     return (
       <div data-testid={testId} data-phase="running" className="grid gap-1.5">
         <Meter
@@ -104,7 +105,11 @@ export function VoiceGenerate({
           <span role="status" className="min-w-0 flex-1 text-xs text-fg-2">
             {cancelling
               ? t("voice.generate.cancelling")
-              : t("voice.generate.progress", { done: job?.done ?? 0, total: job?.total ?? 0 })}
+              : waiting !== null
+                ? t("voice.generate.waiting", {
+                    seconds: Math.max(1, Math.ceil((waiting - Date.now()) / 1000)),
+                  })
+                : t("voice.generate.progress", { done: job?.done ?? 0, total: job?.total ?? 0 })}
           </span>
           <Button
             size="xs"

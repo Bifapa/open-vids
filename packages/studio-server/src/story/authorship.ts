@@ -27,6 +27,7 @@ export const DEFAULT_CONTENT: Record<StoryNodeKind, Record<string, unknown>> = {
     captions: false,
     graphics: "",
     audio: "",
+    narration: "",
     previewFrame: null,
   },
   video: { sourceIn: 0, sourceOut: null, usageIntent: "", previewFrame: null },

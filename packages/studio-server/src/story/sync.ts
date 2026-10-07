@@ -28,6 +28,8 @@ import {
   MUSIC_FADE_SECONDS,
   STORY_TRACKS,
   round3,
+  narrationLine,
+  type IntentNarration,
   type IntentSection,
   type IntentUnit,
   type StoryIntent,
@@ -164,14 +166,20 @@ function unitReasons(
   role: StorySyncRole,
   built: unknown,
   wanted: readonly EditOperation[],
+  wantedTake: IntentNarration["take"] | null,
 ): string[] {
-  const before: unknown[] = Array.isArray(built) ? built : [];
+  const before = intentOps(built);
   if (role === "a_roll") {
-    const old = before.filter(isEditOperation);
-    return [`A-roll changed: ${opsLength(old)} s → ${opsLength(wanted)} s`];
+    return [
+      `A-roll changed: ${opsLength(before.filter(isEditOperation))} s → ${opsLength(wanted)} s`,
+    ];
   }
   if (before.length === 0 && wanted.length > 0) return ["now placed"];
   if (before.length > 0 && wanted.length === 0) return ["no longer placed"];
+  if (role === "narration" && wantedTake && isPlainRecord(built) && isPlainRecord(built.take)) {
+    if (built.take.id !== wantedTake.id || built.take.fingerprint !== wantedTake.fingerprint)
+      return ["the voice was generated again"];
+  }
   const a = before[0];
   const b = wanted[0];
   if (!isPlainRecord(a) || !b) return ["changed"];
@@ -181,6 +189,25 @@ function unitReasons(
     if (!sameJson(a[key], bRecord[key])) words.add(OP_FIELD_WORDS[key] ?? key);
   }
   return words.size > 0 ? [[...words].join(", ") + " changed"] : ["changed"];
+}
+
+function isNarrationUnit(unit: IntentUnit): unit is IntentNarration {
+  return unit.role === "narration" && "take" in unit;
+}
+
+/**
+ * What the ledger records as a unit's intent, and what a rebuild compares: its operations, and for a narration the
+ * voice take it was built from (the same line with a regenerated take is a change).
+ */
+function intentOf(unit: IntentUnit): unknown {
+  if (!isNarrationUnit(unit)) return unit.ops;
+  return { ops: unit.ops, take: { id: unit.take.id, fingerprint: unit.take.fingerprint } };
+}
+
+/** The operations of a recorded intent, whichever shape it was written in. */
+function intentOps(intent: unknown): unknown[] {
+  if (Array.isArray(intent)) return intent;
+  return isPlainRecord(intent) && Array.isArray(intent.ops) ? intent.ops : [];
 }
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
@@ -426,7 +453,13 @@ export function planSync(input: PlanInput): SyncPlan {
 
   const workUnits = (section: WorkSection): WorkUnit[] => {
     const ledgerUnits = section.ledger?.units ?? [];
-    const intentUnits = section.intent ? [section.intent.aRoll, ...section.intent.materials] : [];
+    const intentUnits = section.intent
+      ? [
+          section.intent.aRoll,
+          ...(section.intent.narration ? [section.intent.narration] : []),
+          ...section.intent.materials,
+        ]
+      : [];
     const keys = [
       ...new Set([
         ...intentUnits.map((unit) => unit.node),
@@ -437,7 +470,7 @@ export function planSync(input: PlanInput): SyncPlan {
       const built = ledgerUnits.find((unit) => unit.node === node) ?? null;
       const wanted = intentUnits.find((unit) => unit.node === node) ?? null;
       const wantedOps = wanted?.ops ?? [];
-      const builtOps: unknown[] = built && Array.isArray(built.intent) ? built.intent : [];
+      const builtOps = built ? intentOps(built.intent) : [];
       if (builtOps.length === 0 && wantedOps.length === 0 && (built?.entities.length ?? 0) === 0) {
         return [];
       }
@@ -445,12 +478,15 @@ export function planSync(input: PlanInput): SyncPlan {
       const title =
         role === "a_roll"
           ? `${section.title} A-roll`
-          : (wanted?.title ?? nodes.get(node)?.title ?? node);
+          : role === "narration"
+            ? `${section.title} narration`
+            : (wanted?.title ?? nodes.get(node)?.title ?? node);
       let change: StorySyncChange;
       if (!built) change = "added";
       else if (!section.intent || wantedOps.length === 0)
         change = builtOps.length === 0 ? "unchanged" : "removed";
-      else change = sameJson(built.intent, wantedOps) ? "unchanged" : "changed";
+      else
+        change = sameJson(built.intent, wanted ? intentOf(wanted) : []) ? "unchanged" : "changed";
       const edits = built
         ? [
             ...editsOf(built, section.shift, title),
@@ -467,7 +503,12 @@ export function planSync(input: PlanInput): SyncPlan {
           change,
           reasons:
             change === "changed"
-              ? unitReasons(role, built?.intent, wantedOps)
+              ? unitReasons(
+                  role,
+                  built?.intent,
+                  wantedOps,
+                  wanted && isNarrationUnit(wanted) ? wanted.take : null,
+                )
               : change === "removed"
                 ? [section.intent ? "no longer in the chapter" : "chapter removed"]
                 : [],
@@ -794,8 +835,46 @@ export function planSync(input: PlanInput): SyncPlan {
     list.push(range);
     placedRanges.set(source, list);
   };
+  /**
+   * A captioned chapter whose narration is on the timeline takes its cues from the narration's words (the source
+   * text, timed by the take) instead of the A-roll's speech: the new take's when the narration is placed now, the
+   * take it was built from when the unit stays as it is (unchanged, locked, skipped, or kept with the user's edits).
+   */
+  const narratedSpans: NarratedSpan[] = [];
+  const narrated = new Map<string, NarratedWords>();
   for (const section of sections) {
     if (!section.placed || !section.intent?.chapter.captions) continue;
+    const unit = section.units.find((entry) => entry.role === "narration");
+    if (!unit || unit.action === "remove") continue;
+    const spans: NarratedSpan[] = [];
+    let heard: NarratedWords | null = null;
+    const spoken = section.intent.narration;
+    if (unit.action === "add" || unit.action === "rebuild") {
+      if (spoken?.words) {
+        heard = { words: spoken.words, start: spoken.take.start };
+        spans.push({
+          words: spoken.words,
+          range: { from: 0, to: round3(spoken.take.end - spoken.take.start), at: section.newStart },
+        });
+      }
+    } else if (unit.ledger) {
+      const takeId = builtTakeId(unit.ledger.intent);
+      const voice = takeId ? intent.voiceWords(narrationLine(section.chapter), takeId) : null;
+      if (voice?.words) {
+        heard = { words: voice.words, start: voice.start };
+        for (const clip of [...unit.present, ...unit.derived]) {
+          const span = narrationSpan(heard, clip, moves.get(clip) ?? 0);
+          if (span) spans.push(span);
+        }
+      }
+    }
+    if (!heard || spans.length === 0) continue;
+    narrated.set(section.chapter, heard);
+    narratedSpans.push(...spans);
+  }
+  for (const section of sections) {
+    if (!section.placed || !section.intent?.chapter.captions) continue;
+    if (narrated.has(section.chapter)) continue;
     const aRoll = section.units.find((unit) => unit.role === "a_roll");
     const fresh =
       section.ledger === null ||
@@ -817,7 +896,9 @@ export function planSync(input: PlanInput): SyncPlan {
     }
   }
   const cues =
-    intent.captionPreset === null ? [] : cuesFor(placedRanges, input.transcripts, warnings);
+    intent.captionPreset === null
+      ? []
+      : cuesFor(placedRanges, input.transcripts, warnings, narratedSpans);
   if (
     intent.captionPreset !== null &&
     cues.length === 0 &&
@@ -1159,10 +1240,8 @@ export function planSync(input: PlanInput): SyncPlan {
           start: section.newStart,
           length,
           units: section.units.flatMap((unit) => {
-            const entry = ledgerUnit(unit, section.delta, unit.intent?.ops ?? []);
-            return entry &&
-              (entry.entities.length > 0 ||
-                (Array.isArray(entry.intent) && entry.intent.length > 0))
+            const entry = ledgerUnit(unit, section.delta, unit.intent ? intentOf(unit.intent) : []);
+            return entry && (entry.entities.length > 0 || intentOps(entry.intent).length > 0)
               ? [entry]
               : [];
           }),
@@ -1188,14 +1267,29 @@ export function planSync(input: PlanInput): SyncPlan {
         const host = hostId ? afterById.get(hostId) : undefined;
         // Fingerprint the cues as a later read will see them: from the A-roll clips as written.
         const written = new Map<string, PlacedRange[]>();
+        const writtenNarration: NarratedSpan[] = [];
         for (const section of ledgerSections) {
           const chapter = nodes.get(section.chapter);
           if (!chapter || !isChapter(chapter) || !chapter.captions) continue;
+          const work = sections.find((entry) => entry.chapter === section.chapter);
+          const spoken = narrated.get(section.chapter);
+          if (spoken) {
+            const unit = section.units.find((entry) => entry.role === "narration");
+            const derived =
+              work?.units
+                .find((entry) => entry.role === "narration" && !TOUCHING.has(entry.action))
+                ?.derived.map((clip) => clip.id) ?? [];
+            for (const id of [...(unit?.entities.map((entity) => entity.clip) ?? []), ...derived]) {
+              const clip = afterById.get(id);
+              const span = clip ? narrationSpan(spoken, clip, 0) : null;
+              if (span) writtenNarration.push(span);
+            }
+            continue;
+          }
           const aRoll = section.units.find((unit) => unit.role === "a_roll");
           const derived =
-            sections
-              .find((work) => work.chapter === section.chapter)
-              ?.units.find((unit) => unit.role === "a_roll" && !TOUCHING.has(unit.action))
+            work?.units
+              .find((unit) => unit.role === "a_roll" && !TOUCHING.has(unit.action))
               ?.derived.map((clip) => clip.id) ?? [];
           for (const id of [...(aRoll?.entities.map((entity) => entity.clip) ?? []), ...derived]) {
             const clip = afterById.get(id);
@@ -1208,7 +1302,7 @@ export function planSync(input: PlanInput): SyncPlan {
         }
         captions = {
           preset: captionsUnit.preset,
-          cues: hashJson(cuesFor(written, input.transcripts, [])),
+          cues: hashJson(cuesFor(written, input.transcripts, [], writtenNarration)),
           file: after.captionsFile,
           entity: host && hostId ? { clip: hostId, state: clipState(host) } : null,
           turnId: input.turnId,
@@ -1262,13 +1356,60 @@ function clipRange(clip: ClipNode, delta: number): { source: string; range: Plac
   };
 }
 
-/** Word-synced caption cues for the placed ranges of every source, in timeline order, with distinct starts. */
+/** A narration's caption words (relative to its take's start) and the take's start in its file. */
+interface NarratedWords {
+  words: NonNullable<IntentNarration["words"]>;
+  start: number;
+}
+
+/** A narration's caption words and where the take plays on the timeline (`range` is in take-relative seconds). */
+interface NarratedSpan {
+  words: NarratedWords["words"];
+  range: PlacedRange;
+}
+
+/** Where a narration clip plays, as a span of the take's words (the clip's in-point minus the take's start). */
+function narrationSpan(heard: NarratedWords, clip: ClipNode, delta: number): NarratedSpan | null {
+  const placed = clipRange(clip, delta);
+  if (!placed) return null;
+  return {
+    words: heard.words,
+    range: {
+      from: round3(placed.range.from - heard.start),
+      to: round3(placed.range.to - heard.start),
+      at: placed.range.at,
+    },
+  };
+}
+
+/** The id of the take a ledger's narration intent was built from (null: not a narration intent). */
+function builtTakeId(intent: unknown): string | null {
+  if (!isPlainRecord(intent) || !isPlainRecord(intent.take)) return null;
+  return typeof intent.take.id === "string" ? intent.take.id : null;
+}
+
+const SENTENCE_END = /[.!?…]["'”’)\]]*$/;
+
+/**
+ * Word-synced caption cues for the placed ranges of every source, plus the narrated chapters' words, in timeline
+ * order, with distinct starts.
+ */
 function cuesFor(
   placed: ReadonlyMap<string, PlacedRange[]>,
   transcripts: ReadonlyMap<string, TranscriptArtifact | null>,
   warnings: string[],
+  narrated: readonly NarratedSpan[],
 ): CaptionCue[] {
   const cues: CaptionCue[] = [];
+  for (const span of narrated) {
+    cues.push(
+      ...captionCuesFromWords(span.words, [span.range], {
+        sentenceEnds: new Set(
+          span.words.flatMap((word, index) => (SENTENCE_END.test(word.text.trim()) ? [index] : [])),
+        ),
+      }),
+    );
+  }
   for (const [source, ranges] of placed) {
     const transcript = transcripts.get(source) ?? null;
     if (!transcript) {

@@ -14,6 +14,7 @@ import type {
 } from "../../hooks/useTimelineGroupEditing";
 import type { ToastAction } from "../../utils/studioHelpers";
 import { describeApplyReport } from "./voiceApplyNotice";
+import { addVoiceCaptions, type VoiceCaptionsReport } from "./voiceCaptions";
 import {
   addVoiceLines,
   applyVoiceTakes,
@@ -33,6 +34,8 @@ export interface VoiceClipOps {
   addLines(items: readonly TakeApplication[]): Promise<VoiceAddReport>;
   /** Carves every music bed against the voiceover. */
   carveMusic(): Promise<VoiceCarveReport>;
+  /** Writes captions from the voiceover clips (each line's own text, timed by its take's words). */
+  addCaptions(): Promise<VoiceCaptionsReport>;
 }
 
 export interface UseVoiceClipOpsOptions {
@@ -139,5 +142,23 @@ export function useVoiceClipOps(options: UseVoiceClipOpsOptions): VoiceClipOps {
     return report;
   }, [depsOf]);
 
-  return useMemo(() => ({ applyTakes, addLines, carveMusic }), [applyTakes, addLines, carveMusic]);
+  const addCaptions = useCallback(async () => {
+    const report = await addVoiceCaptions(depsOf());
+    const { showToast, undo } = latest.current;
+    if (report.kind === "failed") showToast(report.message, "error");
+    else if (report.files > 0) {
+      showToast(t("voice.toast.captionsAdded"), "info", {
+        label: t("common.undo"),
+        run: () => void undo(),
+      });
+      if (report.skipped > 0)
+        showToast(t("voice.toast.captionsSkipped", { count: report.skipped }), "info");
+    } else showToast(t("voice.toast.captionsNone"), "info");
+    return report;
+  }, [depsOf]);
+
+  return useMemo(
+    () => ({ applyTakes, addLines, carveMusic, addCaptions }),
+    [applyTakes, addLines, carveMusic, addCaptions],
+  );
 }

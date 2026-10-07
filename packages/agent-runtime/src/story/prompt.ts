@@ -32,7 +32,13 @@ interface BuildVariant {
   researchReady: boolean;
   /** The Research specialist is on: otherwise the Director fetches with the tools it inherits. */
   researchEnabled: boolean;
+  /** The runtime has the voiceover host: narrated chapters get their voice generated before the build. */
+  voice: boolean;
 }
+
+const BUILD_NARRATION = `3. Narration voice. For the chapters whose narration is not empty (read_story shows it as "narration" with whether its voice is generated): if the project has no voice yet, call request_voice_setup first (it offers the project's voice when there is one); then call generate_voiceover ONCE with a line {id: "chapter-<chapterId>", text: <that chapter's narration, word for word>} for every narrated chapter whose voice is not generated yet or whose narration text changed since, in story order. generate_voiceover updates the script: lines you do not pass (other chapters, voiceover lines the project already has) stay as they are, so never pass a line just to keep it. build_story places the voice of the line "chapter-<chapterId>" at the start of its chapter and skips narration whose line has no generated take (warning "narration has no generated voice yet"). Generating is paid and may need the user's approval: wait for it. If the user declines or nothing is generated, go on; the report lists those chapters. Chapters without narration need no voice; never invent narration the user did not ask for. Captions of a narrated chapter follow its narration.`;
+
+const VOICE_PLAN = `- Narration: when the user asks for a narrated video, write each chapter's narration with edit_story (the chapter field "narration": the words the narrator says over that chapter, in the video's language, one text per chapter, no stage directions). A narration the user wrote ("set by user") stays as written. The voice is generated and placed by the Build, never in this turn.`;
 
 const BUILD_PREPARE = `1. Prepare the material. read_story and inspect_project show what the chapters need and what the project has. You may still edit the graph with edit_story in this step (user decisions and locked nodes still rule): add a missing-asset node (mediaKind video / picture / music / sfx, a concrete need, neededDuration) for each piece of material the chapters need and the project lacks — a music bed unless the user said no music (attach it to every chapter it should span: one music node attached to several chapters is one bed across them), the sound effects the chapters call for (attach each to the chapter that uses it, with an offset in seconds from the chapter start and a short duration), and the footage or pictures that the chapter descriptions or bRoll name (attach to the chapters that use them). An asset the project already has is attached to the chapter, not searched for again.`;
 
@@ -44,20 +50,31 @@ const BUILD_NO_FETCH = `2. Outside material cannot be fetched in this turn: Stud
 
 const BUILD_FROZEN = `After the build the graph is frozen for the rest of the turn: edit_story and resolving Missing Asset nodes are refused. Material that turns up later is imported without resolveMissing and placed on the timeline with edit_timeline.`;
 
-function buildRules({ editorEnabled, researchReady, researchEnabled }: BuildVariant): string {
+function buildRules({
+  editorEnabled,
+  researchReady,
+  researchEnabled,
+  voice,
+}: BuildVariant): string {
   const builder = editorEnabled
     ? "Delegate the Editor: build_story"
     : "Compile the story yourself: build_story";
   const fetch = researchReady ? (researchEnabled ? BUILD_FETCH : BUILD_FETCH_SELF) : BUILD_NO_FETCH;
   const finishers =
     "(a specialist that is off in this chat is not delegated to: you do its part yourself)";
+  const narration = voice ? `\n${BUILD_NARRATION}` : "";
+  // The narration step shifts the numbers of the steps after it.
+  const [build, motion, mix, verify] = voice ? [4, 5, 6, 7] : [3, 4, 5, 6];
+  const ducking = voice
+    ? " The narration clips (the voiceover audio group) are speech too: duck the music under them (duck_audio) and keep the sound effects clear of the words."
+    : "";
   return `Action: build ("Build the video"). The user expects a finished, watchable video with sound — picture, motion graphics, music and sound effects — produced in this one turn, not a silent draft. Work through the steps in order; skip a step only when there is nothing to do in it.
 ${BUILD_PREPARE}
-${fetch}
-3. Build. ${builder} exactly once (pass the version from read_story as baseVersion), then inspect_timeline to see the spans, clips and warnings. ${BUILD_REPLACES} ${BUILD_FROZEN} ${PICKED_FRAGMENTS}
-4. Motion graphics. Delegate Motion for the scenes and titles the build cannot generate (title cards, lower thirds, the graphics the chapters describe), placed on the chapter spans from the build result ${finishers}.
-5. Final sound mix. Delegate Audio for the mix ${finishers}: music about 0.2–0.4 under speech and lower under sound effects, a 1–2 s fade in at the start and fade out at the end of the video, sound effects on the beats they belong to. Make sure every chapter that needs sound has it.
-6. Verify with inspect_timeline, then report per chapter by title: its span, picture, graphics and sound; warnings; the manual edits replaced and the locked chapters kept; every outside asset added with source and license (flag unknown or restricted licenses); and what is still missing and what the user must do about it. Never render unless the user asked for a file: the runtime's Render QA checks the result.`;
+${fetch}${narration}
+${build}. Build. ${builder} exactly once (pass the version from read_story as baseVersion), then inspect_timeline to see the spans, clips and warnings. ${BUILD_REPLACES} ${BUILD_FROZEN} ${PICKED_FRAGMENTS}
+${motion}. Motion graphics. Delegate Motion for the scenes and titles the build cannot generate (title cards, lower thirds, the graphics the chapters describe), placed on the chapter spans from the build result ${finishers}.
+${mix}. Final sound mix. Delegate Audio for the mix ${finishers}: music about 0.2–0.4 under speech and lower under sound effects, a 1–2 s fade in at the start and fade out at the end of the video, sound effects on the beats they belong to.${ducking} Make sure every chapter that needs sound has it.
+${verify}. Verify with inspect_timeline, then report per chapter by title: its span, picture, graphics and sound; warnings; the manual edits replaced and the locked chapters kept; every outside asset added with source and license (flag unknown or restricted licenses); and what is still missing and what the user must do about it. Never render unless the user asked for a file: the runtime's Render QA checks the result.`;
 }
 
 const REBUILD = `Action: rebuild. Bring the timeline in line with the graph after the user changed it, touching only what changed (Rebuild affected sections). rebuild_story regenerates only the units the graph changed, moves sections that only moved, keeps everything else byte-identical, keeps manual edits to generated clips under the "keep" policy, and never rebuilds a locked chapter without the user's permission. The scope and policy below are the user's choices for this turn; rebuild_story applies them itself and you cannot change them.
@@ -144,11 +161,12 @@ export function storyModeRules(
   editorEnabled: boolean,
   options: StoryActionOptions | null,
   research: StoryResearch,
+  voice = false,
 ): string {
   const { researchReady, researchEnabled } = research;
   const body =
     action === "review"
-      ? REVIEW
+      ? `${REVIEW}${voice ? `\n${VOICE_PLAN}` : ""}`
       : action === "rebuild"
         ? REBUILD
         : action === "resolve"
@@ -158,8 +176,8 @@ export function storyModeRules(
               : RESOLVE_SELF
             : RESOLVE_NO_RESEARCH
           : action === "build"
-            ? buildRules({ editorEnabled, researchReady, researchEnabled })
-            : PLAN;
+            ? buildRules({ editorEnabled, researchReady, researchEnabled, voice })
+            : `${PLAN}${voice ? `\n${VOICE_PLAN}` : ""}`;
   const chosen = optionsText(action, options);
   const scope =
     action === "resolve" && researchReady ? `\n${resolveScopeText(research.scope, options)}` : "";
@@ -194,6 +212,8 @@ export function renderStoryBlocks(input: {
   researchReady: boolean;
   /** The Research specialist is on in this chat: otherwise the Director fetches material itself. */
   researchEnabled: boolean;
+  /** The runtime has the voiceover host: narration steps appear in the rules. */
+  voice?: boolean;
 }): string {
   const graph =
     input.graph ??
@@ -206,5 +226,5 @@ export function renderStoryBlocks(input: {
         ? resolveScope(input.view, input.storyOptions)
         : null,
   };
-  return `<story-graph>\n${graph}\n</story-graph>\n\n${storyModeRules(input.action, input.editorEnabled, input.storyOptions, research)}`;
+  return `<story-graph>\n${graph}\n</story-graph>\n\n${storyModeRules(input.action, input.editorEnabled, input.storyOptions, research, input.voice === true)}`;
 }

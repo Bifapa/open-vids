@@ -431,6 +431,7 @@ describe("what the user decided", () => {
         captions: false,
         graphics: "",
         audio: "",
+        narration: "",
         previewFrame: null,
       });
       graph.edges = graph.edges.filter((edge) => !(edge.from === a && edge.to === b));

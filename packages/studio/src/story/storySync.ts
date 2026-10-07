@@ -36,6 +36,7 @@ export const SYNC_ROLE_KEYS = {
   motion: "story.sync.role.motion",
   sfx: "story.sync.role.sfx",
   music: "story.sync.role.music",
+  narration: "story.sync.role.narration",
   captions: "story.sync.role.captions",
 } as const satisfies Record<StorySyncRole, TranslationKey>;
 

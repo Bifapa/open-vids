@@ -92,6 +92,7 @@ export function newChapter(id: string, position: StoryPoint): ChapterNode {
     captions: false,
     graphics: "",
     audio: "",
+    narration: "",
     previewFrame: null,
   };
 }

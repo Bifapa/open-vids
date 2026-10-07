@@ -753,7 +753,7 @@ runtime or a model, and the agents name a saved voice (a preset) and send lines,
   `not_audio` (the server's answer, excerpted), `dialect_violation` (the issues), `not_configured` (call
   `request_voice_setup`).
 - **Tools** (`src/voice/tools.ts`, executor `src/voice/executor.ts`): `request_voice_setup {language, sampleText,
-  suggestion}` (Director and Audio; the Director always has it) and `generate_voiceover {lines, lineIds?}` (Audio; the
+suggestion}` (Director and Audio; the Director always has it) and `generate_voiceover {lines, lineIds?}` (Audio; the
   Director inherits it when Audio is off — `withInheritedTools`). Both change the project (and cost money): never in an Ask
   turn, refused after a plan proposal, in the Render QA review and in the final report, and in a design turn
   (`PROJECT_CHANGING_TOOLS`, `CHANGES_PROJECT`). They write takes and audio through the voice service, never a
@@ -766,25 +766,42 @@ runtime or a model, and the agents name a saved voice (a preset) and send lines,
   (`PUT …/voice/voice`) and returns the voice with its script dialect (`renderVoiceDialect(dialect, provider.agentRules)`:
   tags, pauses, style field, limits, vendor guidance and the user's own rules). A decline or an unanswered card (the turn
   ended) returns a refusal that says there is no voiceover and not to make speech another way.
-- **`generate_voiceover`.** Saves the script (`PUT …/voice/script`, ids kept so takes survive), checks it
+- **`generate_voiceover`.** Updates the script, never replaces it (`upsertLines` in `src/voice/executor.ts`: reads
+  `GET …/voice/script`, a line with an existing id is replaced in place, an id-less line with the exact text of an unclaimed
+  existing line is that line, any other line is appended, every line the call does not carry stays untouched, then
+  `PUT …/voice/script`; `lineIds` defaults to the lines of the call that have no current take), checks it
   (`POST …/voice/check`; an error goes back to the agent verbatim with the dialect rules, nothing is paid and no card is
   shown), asks `voice_generation` — a once-only permission card carrying `voice: {provider, model, lines, seconds,
-  usdCost}`, answered once per turn like `long_render`, skipped when every line is already cached —, generates the **first
+usdCost}`, answered once per turn like `long_render`, skipped when every line is already cached —, generates the **first
   line needing generation** as the pilot and publishes a `voice-pilot` part (`POST …/voice-pilots/:id` with `{decision:
-  "approve"}` or `{decision: "change", feedback}`). Approved: the rest is generated in the same call and the result lists
+"approve"}` or `{decision: "change", feedback}`). Approved: the rest is generated in the same call and the result lists
   every line's id, file, range in the file and length, how to place them (`edit_timeline add_clip {voiceLine, start,
-  track}` — the clip takes the file, range and length from the line's selected take) and to duck the music
+track}` — the clip takes the file, range and length from the line's selected take) and to duck the music
   (`duck_audio`); changes: the user's note is returned, nothing else was generated; a failure after the pilot keeps the
   pilot and says so. Server problems return as text (above); the call never retries by itself.
 - **Prompts.** `VOICE_DIRECTOR`: call `request_voice_setup` first, write the script in the returned dialect, optionally show
   it with `propose_plan` (one step per line, the step title is the speaker text — Studio draws its tags as chips), then
   delegate to Audio with the script and the dialect rules in the task. `VOICE_AUDIO` (also in the Director's inherited
   work when Audio is off): voice → script → `generate_voiceover` → placement with `voiceLine` → `duck_audio` → verify.
+- **Captions from the voiceover.** With the voice host on, `edit_timeline` also offers `captions_from_voiceover {preset?,
+track?, lines?}` (schema in `editing/schemaMore.ts`, hidden by `editTimelineParameters(…, voice)` and absent from the
+  description otherwise, so the tool reads exactly as before without a voice host): every clip placed with `add_clip
+voiceLine` shows its line's own text timed by the words of the take it plays. `VOICE_CAPTIONS` (Audio and Editor, and the
+  Director's inherited Editor work) tells the agents to place the narration first and never retype the script into
+  `apply_captions`.
 - Events and parts: `voiceSetup.updated` / `voicePilot.updated` (`messageId`, the request) fold into `voice-setup` /
   `voice-pilot` parts in the main message; a pending card is expired when the turn ends (`settleOpenPart`), like questions.
 - Chat rows: `requesting_voice_setup`, `generating_voiceover {count}`.
 - `FakeVoiceHost` (`src/testing/voice.ts`) is the in-memory host for tests; unlike the other fakes the runtime fixture does
   not wire it by default — pass `{ voice: () => host }` to `createRuntimeFixture`.
+- **Narrated stories.** A Story Graph chapter has a `narration` field (the narrator's text; always editable). With the voice
+  host on, the story prompt (`story/prompt.ts`) adds a step before `build_story`: for the chapters with narration, `request_voice_setup`
+  when the project has no voice, then ONE `generate_voiceover` with a line `{id: "chapter-<chapterId>", text: <narration>}`
+  per narrated chapter in story order; the plan/review rules let the Director write `narration` when the user asks for a
+  narrated video; `edit_story` / `build_story` / `rebuild_story` descriptions carry a voice note, `read_story` shows each
+  narration with "voice generated, <length>" or "voice not generated yet" (`StoryNodeFacts.narration`, dropped by
+  `TurnStory` without the voice host), and the Audio step ducks music under the narration. Build Story itself reads
+  `.hyperframes/voice/takes.json`, never the voice engine (studio-server `story/compile.ts`).
 
 ## Other projects (`#` attachments)
 

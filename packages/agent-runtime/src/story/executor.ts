@@ -27,6 +27,8 @@ export interface TurnStoryOptions {
   turnSignal: AbortSignal;
   /** The user's choices for a build/rebuild turn; the tools apply them and the model cannot widen them. */
   storyOptions: StoryActionOptions | null;
+  /** The runtime has the voiceover host: the model is told whether each narration has its generated voice. */
+  voice?: boolean;
 }
 
 const refuse = (text: string): HostToolResult => ({ text, isError: true });
@@ -129,6 +131,25 @@ export class TurnStory {
 
   constructor(private readonly options: TurnStoryOptions) {}
 
+  /** The view as the model reads it: what the voice host knows about narration is left out without the host. */
+  private shown(view: StoryView): StoryView {
+    if (this.options.voice === true) return view;
+    return {
+      ...view,
+      facts: Object.fromEntries(
+        Object.entries(view.facts).map(([id, facts]) => [
+          id,
+          {
+            timeline: facts.timeline,
+            ...(facts.materialDuration !== undefined && {
+              materialDuration: facts.materialDuration,
+            }),
+          },
+        ]),
+      ),
+    };
+  }
+
   /** A real (not dry-run) `build_story` succeeded in this turn: the graph is frozen until the turn ends. */
   hasBuilt(): boolean {
     return this.built;
@@ -155,7 +176,7 @@ export class TurnStory {
   async snapshot(signal: AbortSignal): Promise<{ graph: string | null; view: StoryView | null }> {
     try {
       const view = await this.options.host.view(signal);
-      return { graph: formatStory(view, 10_000), view };
+      return { graph: formatStory(this.shown(view), 10_000), view };
     } catch {
       return { graph: null, view: null };
     }
@@ -176,7 +197,7 @@ export class TurnStory {
     const { host, turnId, storyOptions } = this.options;
     switch (name) {
       case STORY_TOOL_NAMES.read:
-        return { text: formatStoryPage(await host.view(signal), readRequest(args)) };
+        return { text: formatStoryPage(this.shown(await host.view(signal)), readRequest(args)) };
       case STORY_TOOL_NAMES.edit: {
         if (this.built)
           return refuse(

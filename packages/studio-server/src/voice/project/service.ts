@@ -24,6 +24,8 @@ export interface ProjectVoiceServiceOptions {
   engine: VoiceEngine;
   transcribe: TranscribeMedia;
   now?: () => number;
+  /** Waits `ms` (rejects when the signal aborts); replaced in tests. */
+  sleep?: (ms: number, signal: AbortSignal) => Promise<void>;
 }
 
 /** A project's voiceover: its script and takes, the check, and generation through the engine. */
@@ -40,6 +42,7 @@ export class ProjectVoiceService {
       engine: options.engine,
       transcribe: options.transcribe,
       now: this.now,
+      ...(options.sleep && { sleep: options.sleep }),
     });
   }
 

@@ -13,7 +13,9 @@ import {
 } from "@hyperframes/agent-protocol";
 import { AnalysisFailure } from "../analysis/errors.js";
 import type { SourceAnalysisData } from "../analysis/service.js";
+import type { MediaProber } from "../editing/mediaFacts.js";
 import { createTestProject, fakeProber, type TestProject } from "../editing/testProject.js";
+import { classifyMediaColor } from "../helpers/mediaMetadata.js";
 import { StoryFailure, isStoryFailure } from "./errors.js";
 import { StoryService, type StoryAnalysis } from "./service.js";
 
@@ -29,6 +31,12 @@ export const BLANK_HTML = `<!doctype html>
 `;
 
 export const TALK = "assets/a.mp4";
+
+/** The fake prober, plus the generated voice files (`assets/voice/*.wav`, 12 s of audio) of the narration tests. */
+const storyProber: MediaProber = async (path) =>
+  path.endsWith(".wav")
+    ? { kind: "audio", color: classifyMediaColor(null), durationSeconds: 12 }
+    : fakeProber(path);
 
 const BLOCK: RegistryItem = {
   type: "hyperframes:block",
@@ -242,7 +250,7 @@ export function createStoryFixture(
   });
   const analysis = fakeAnalysis(made);
   if (options.analysed !== false) analysis.data.set(TALK, talkAnalysis());
-  const service = new StoryService(made.adapter, analysis, { probe: fakeProber });
+  const service = new StoryService(made.adapter, analysis, { probe: storyProber });
   const fixture: StoryFixture = {
     made,
     analysis,

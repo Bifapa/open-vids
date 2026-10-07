@@ -151,6 +151,7 @@ export function chapter(id: string, title: string, x: number, description: strin
     captions: false,
     graphics: "",
     audio: "",
+    narration: "",
     previewFrame: null,
   };
 }

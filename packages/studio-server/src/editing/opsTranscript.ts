@@ -14,7 +14,7 @@ const DEFAULT_MAX_WORDS = 6;
 const MAX_CUE_CHARS = 42;
 /** A pause longer than this ends a cue. */
 const CUE_GAP = 0.7;
-const SENTENCE_END = /[.!?…]["')\]]*$/;
+export const SENTENCE_END = /[.!?…]["')\]]*$/;
 
 interface TimedWord {
   text: string;

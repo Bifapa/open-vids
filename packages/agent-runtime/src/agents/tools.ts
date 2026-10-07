@@ -229,7 +229,9 @@ export function buildHostTools(
       )
     : [];
   const story = availability.story
-    ? buildStoryTools(agent, availability.enabled, turn, execute)
+    ? buildStoryTools(agent, availability.enabled, turn, execute, {
+        voice: availability.voice === true,
+      })
     : [];
   const researchFamily = agent !== "jev" && (availability.research || availability.websites);
   const research = researchFamily

@@ -37,6 +37,7 @@ export function chapterNode(id: string, overrides: Partial<ChapterNode> = {}): C
     captions: false,
     graphics: "",
     audio: "",
+    narration: "",
     previewFrame: null,
     ...overrides,
   };

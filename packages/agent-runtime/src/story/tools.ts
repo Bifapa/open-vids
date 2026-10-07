@@ -104,6 +104,14 @@ Operations (each has "op" plus):
   rebuild_story: `Rebuild affected sections: bring the timeline in line with the Story Graph after the graph changed since it was built, touching only what changed. It regenerates only the units (a chapter's A-roll, one attached B-roll/picture/motion, a music bed, captions) whose intent the graph changed, adds the sections of new chapters and removes the sections of deleted ones, moves sections that only moved (new order, or an earlier section changed length) with their content untouched, and keeps everything else byte-identical. Manual edits the user or an AI made to generated clips are kept in a unit that has to change unless the user chose to replace them for this turn; clips no chapter owns (manual additions, cutaways) are never removed and move with the section they sit in. Locked chapters are never regenerated unless the user allowed them from the Story workspace (you cannot allow them yourself); they may still move in time as a whole and are reported as pending. The scope (chapters), the manual-edit policy and the locked permissions come from the user's choices for this turn and cannot be widened. If the timeline already matches the graph nothing is written. Returns what was rebuilt, removed and moved by chapter, the kept and replaced manual edits, the locked chapters left pending and warnings. Pass baseVersion (from read_story) to refuse the rebuild when the graph changed since you read it. The change belongs to this turn's checkpoint, so the user can revert it. Placed media respects the user's picked fragments (inspect_project: "USER-PICKED FRAGMENT"): only the picked part of a file is ever used. Pass dryRun true to see the result without writing anything.`,
 };
 
+/** Added to a tool's description only when the runtime has the voiceover host (otherwise narration is just a text field). */
+const VOICE_NARRATION_BUILD = ` Narration: a chapter with narration gets the voice of its voiceover line "chapter-<chapterId>" (the selected take) at its start on its own track, and its captions follow that narration; a narration whose line has no generated take yet is skipped with a warning, so generate the voiceover (generate_voiceover with {id: "chapter-<chapterId>", text: <narration>}) before building. A regenerated take is picked up as a change.`;
+const VOICE_NOTES: Partial<Record<StoryToolName, string>> = {
+  edit_story: `\n- narration (chapter field) is the voiceover text of the chapter: the Build generates its voice. Write it only when the user asks for a narrated video; one text per chapter, in the video's language, without stage directions.`,
+  build_story: VOICE_NARRATION_BUILD,
+  rebuild_story: VOICE_NARRATION_BUILD,
+};
+
 // ── Schemas ──────────────────────────────────────────────────────────────────
 
 const str = (description: string, maxLength?: number) => ({
@@ -185,7 +193,9 @@ const frameRef = {
 
 const title = str("Short title.", STORY_LIMITS.titleChars);
 
-const FIELD_SCHEMAS: Record<string, Record<string, unknown>> = {
+type FieldSchemas = Record<string, Record<string, unknown>>;
+
+const FIELD_SCHEMAS: FieldSchemas = {
   chapter: {
     title,
     purpose: text("What the chapter is for in the story."),
@@ -255,23 +265,23 @@ const REQUIRED_FIELDS: Record<string, string[]> = {
   missing: ["title", "need"],
 };
 
-const nodeSchema = {
+const nodeSchema = (fields: FieldSchemas) => ({
   anyOf: STORY_NODE_KINDS.map((kind) => ({
     type: "object",
-    properties: { kind: { type: "string", enum: [kind] }, ...FIELD_SCHEMAS[kind] },
+    properties: { kind: { type: "string", enum: [kind] }, ...fields[kind] },
     required: ["kind", ...(REQUIRED_FIELDS[kind] ?? [])],
     additionalProperties: false,
   })),
-};
+});
 
 /** An update may carry the fields of any one kind; the service checks them against the node's real kind. */
-const updateFields = {
+const updateFields = (fields: FieldSchemas) => ({
   type: "object",
   description: "Fields to change (only those of the node's kind); at least one.",
-  properties: Object.fromEntries(Object.values(FIELD_SCHEMAS).flatMap(Object.entries)),
+  properties: Object.fromEntries(Object.values(fields).flatMap(Object.entries)),
   minProperties: 1,
   additionalProperties: false,
-};
+});
 
 function operationSchema(
   op: StoryOperationName,
@@ -288,20 +298,22 @@ function operationSchema(
   };
 }
 
-const OPERATION_SCHEMAS: Record<StoryOperationName, Record<string, unknown>> = {
+const operationSchemas = (
+  fields: FieldSchemas,
+): Record<StoryOperationName, Record<string, unknown>> => ({
   add_node: operationSchema(
     "add_node",
     "Add a chapter or a material node.",
     {
       ref: str("Name to refer to this node as @ref later in the batch.", STORY_LIMITS.idChars),
-      node: nodeSchema,
+      node: nodeSchema(fields),
     },
     ["node"],
   ),
   update_node: operationSchema(
     "update_node",
     "Change fields of a node.",
-    { id: nodeId, set: updateFields },
+    { id: nodeId, set: updateFields(fields) },
     ["id", "set"],
   ),
   remove_node: operationSchema("remove_node", "Remove a node with its links.", { id: nodeId }, [
@@ -385,7 +397,38 @@ const OPERATION_SCHEMAS: Record<StoryOperationName, Record<string, unknown>> = {
     },
     ["id", "asset"],
   ),
-};
+});
+
+function editStoryParameters(fields: FieldSchemas): Record<string, unknown> {
+  const schemas = operationSchemas(fields);
+  return {
+    type: "object",
+    properties: {
+      baseVersion: str(
+        "The version from read_story; refused with a conflict if the graph changed.",
+        200,
+      ),
+      operations: {
+        type: "array",
+        minItems: 1,
+        maxItems: STORY_LIMITS.operations,
+        description: "Operations applied in order, atomically.",
+        items: { anyOf: STORY_OPERATION_NAMES.map((name) => schemas[name]) },
+      },
+    },
+    required: ["operations"],
+    additionalProperties: false,
+  };
+}
+
+/** The edit schema with the chapter's `narration` field: only where the runtime has the voiceover host. */
+const VOICE_EDIT_STORY = editStoryParameters({
+  ...FIELD_SCHEMAS,
+  chapter: {
+    ...FIELD_SCHEMAS.chapter,
+    narration: text("What the narrator says over this chapter (plain spoken text)."),
+  },
+});
 
 const PARAMETERS: Record<StoryToolName, Record<string, unknown>> = {
   read_story: {
@@ -410,24 +453,7 @@ const PARAMETERS: Record<StoryToolName, Record<string, unknown>> = {
     },
     additionalProperties: false,
   },
-  edit_story: {
-    type: "object",
-    properties: {
-      baseVersion: str(
-        "The version from read_story; refused with a conflict if the graph changed.",
-        200,
-      ),
-      operations: {
-        type: "array",
-        minItems: 1,
-        maxItems: STORY_LIMITS.operations,
-        description: "Operations applied in order, atomically.",
-        items: { anyOf: STORY_OPERATION_NAMES.map((name) => OPERATION_SCHEMAS[name]) },
-      },
-    },
-    required: ["operations"],
-    additionalProperties: false,
-  },
+  edit_story: editStoryParameters(FIELD_SCHEMAS),
   build_story: {
     type: "object",
     properties: {
@@ -532,11 +558,15 @@ export function buildStoryTools(
   enabled: readonly SpecialistId[],
   turn: StoryTurnMode,
   execute: Executor,
+  options: { voice: boolean } = { voice: false },
 ): HostTool[] {
   return storyToolsFor(agent, enabled, turn).map((name) => ({
     name,
-    description: DESCRIPTIONS[name],
-    parameters: PARAMETERS[name],
+    description: options.voice
+      ? `${DESCRIPTIONS[name]}${VOICE_NOTES[name] ?? ""}`
+      : DESCRIPTIONS[name],
+    parameters:
+      name === STORY_TOOL_NAMES.edit && options.voice ? VOICE_EDIT_STORY : PARAMETERS[name],
     execute: (args, signal) => execute(name, args, signal),
     activity: (args) => ACTIVITIES[name](args),
   }));

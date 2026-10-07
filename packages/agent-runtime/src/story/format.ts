@@ -7,6 +7,7 @@ import {
   type StoryGraph,
   type StoryMaterialNode,
   type StoryNode,
+  type StoryNodeFacts,
   type StoryView,
 } from "@hyperframes/agent-protocol";
 import { clock } from "../analysis/format.js";
@@ -32,6 +33,16 @@ function userSet(node: StoryNode, field: string): string {
 function textLine(node: StoryNode, label: string, field: string, value: string): string | null {
   const text = cell(value);
   return text ? `  ${label}${userSet(node, field)}: ${text}` : null;
+}
+
+/** The narration with, when the story view knows the voice (the runtime has the voice host), its generation status. */
+function narrationLine(chapter: ChapterNode, voice: StoryNodeFacts["narration"]): string | null {
+  const line = textLine(chapter, "narration", "narration", chapter.narration);
+  if (!line || !voice) return line;
+  const status = voice.generated
+    ? `voice generated, ${duration(voice.seconds ?? 0)}${voice.textCurrent ? "" : "; narration text changed since: generate it again"}`
+    : "voice not generated yet";
+  return `${line} [${status}]`;
 }
 
 function rangesLine(chapter: ChapterNode): string | null {
@@ -82,6 +93,7 @@ function chapterBlock(
       textLine(chapter, "B-roll", "bRoll", chapter.bRoll),
       textLine(chapter, "graphics", "graphics", chapter.graphics),
       textLine(chapter, "audio", "audio", chapter.audio),
+      narrationLine(chapter, facts?.narration),
     ].filter((line): line is string => line !== null),
   );
   const nodes = new Map(graph.nodes.map((node) => [node.id, node]));

@@ -176,6 +176,7 @@ describe("a save from Studio", () => {
         captions: false,
         graphics: "",
         audio: "",
+        narration: "",
         previewFrame: null,
       });
       graph.edges = [

@@ -33,6 +33,7 @@ async function storyBlockInput(run: ActiveRun, setup: TurnAgentSetup) {
     graph: snapshot.graph,
     view: snapshot.view,
     researchReady: run.research !== null,
+    voice: run.voice !== null,
   };
 }
 

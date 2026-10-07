@@ -244,6 +244,7 @@ async function buildNode(env: OpsEnv, input: StoryNodeInput, id: string): Promis
         captions: input.captions ?? false,
         graphics: input.graphics ?? "",
         audio: input.audio ?? "",
+        narration: input.narration ?? "",
         previewFrame:
           input.previewFrame !== undefined
             ? await checkedFrame(env, input.previewFrame)

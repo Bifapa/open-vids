@@ -97,6 +97,11 @@ const ADD_CLIP_GUIDE = `- add_clip: asset, start, track; optional duration (defa
 /** The same line when the runtime has a voice host. */
 const VOICE_ADD_CLIP_GUIDE = `- add_clip: asset (omit it only with voiceLine), start, track; optional voiceLine (the id of a generated voiceover line — the clip takes that line's file, range and length), duration (default: rest of the media — of the user-picked fragment, when there is one —; 3 s for images), mediaStart (in-point in the source; defaults to the user-picked fragment's start), volume (0–${EDIT_LIMITS.maxVolume}), muted, fit ("contain"|"cover"), frame ({x, y, width, height} in composition pixels, e.g. a logo in a corner; default: a video fills the frame, an image keeps its size, centred), fadeIn/fadeOut (seconds of linear audio/video gain ramp at the clip start/end; use 1–2 s on music beds).`;
 
+const CAPTIONS_FROM_TRANSCRIPT_GUIDE = `- captions_from_transcript: preset (caption preset), optional track, clips (only these), maxWords (default 6). Writes the captions from the cached transcripts of the clips on the timeline (words follow each clip's in-point, length and speed; the lower track speaks where clips overlap). Needs analyze_media on the sources first; the answer names sources without a transcript.`;
+
+/** With a voice host the guide also names `captions_from_voiceover`. */
+const VOICE_CAPTIONS_GUIDE = `- captions_from_voiceover: optional preset (default: the first caption preset), track, lines (only the clips that speak these voiceover line ids). Writes the captions from the voiceover clips on the timeline (clips placed with add_clip voiceLine): every line shows its own text, timed by the words of the take the clip plays (in-point, length and speed applied). Takes made without word timings are recognised on the spot; the answer says when a clip was skipped.`;
+
 const EDIT_OPERATIONS_GUIDE = `Operations (each has "op" plus):
 ${ADD_CLIP_GUIDE}
 - add_sequence: asset (video/audio), track, ranges [{from, to}] (source in/out points, up to ${EDIT_LIMITS.sequenceRanges}); optional start (default 0), volume, muted, fit, frame, edgeFade (0–${EDIT_LIMITS.maxEdgeFade} s audio ramp at both edges of every clip, e.g. 0.02 against clicks). Places one clip per range back to back with no gaps and returns all their ids; use it for cutting one long recording, not for placing single clips. Refused if a range runs past the end of the source or outside the fragment the user picked.
@@ -113,7 +118,7 @@ ${ADD_CLIP_GUIDE}
 - set_canvas: width, height (even pixels, up to ${EDIT_LIMITS.maxCanvasPixels}); optional fit "keep" (default: placed clips keep their frames — set the canvas BEFORE adding clips when the format is still to be decided), "contain" (re-frame everything already placed so the whole old picture fits inside the new canvas, centred, with bars where the shapes differ) or "cover" (fill the new canvas, cropping). Use contain/cover to turn a finished 16:9 video into 9:16; clips without a pixel frame are reported and left as they are.
 - set_speed: clip (video/audio), rate (${EDIT_LIMITS.minRate}–${EDIT_LIMITS.maxRate}); by default the clip keeps the same stretch of source, so 2 → half as long on the timeline; keepDuration keeps the length (plays more or less of the source); ripple/rippleScope move later clips by the difference.
 - retime_captions: shift (seconds, may be negative) and/or scale; optional from/to (cues starting inside [from, to) move; the rest stay). Moves the cues of existing captions, e.g. after a cut: { shift: -2.5, from: 40 }. Refused if cues would overlap or leave the captions' length.
-- captions_from_transcript: preset (caption preset), optional track, clips (only these), maxWords (default 6). Writes the captions from the cached transcripts of the clips on the timeline (words follow each clip's in-point, length and speed; the lower track speaks where clips overlap). Needs analyze_media on the sources first; the answer names sources without a transcript.
+${CAPTIONS_FROM_TRANSCRIPT_GUIDE}
 - mount_composition: composition (a project .html file, e.g. compositions/intro.html), start, track; optional duration. Mounts an existing composition as a clip, like dropping it in Studio.
 - set_color_grade: clip (video/image); preset (see browse_presets kind color_grade) and/or intensity (0–1) and/or adjust { exposure (±2), contrast, highlights, shadows, whites, blacks, temperature, tint, vibrance, saturation (±1 each) }; or clear: true. A preset replaces the look; adjust layers over what the clip has.
 - set_audio_fx: clip (video/audio), preset (see browse_presets kind audio_fx; re-applying a preset replaces its own effects), optional replace (drop the other effects first); or clear: true.
@@ -387,9 +392,13 @@ const compositionProperty = str(
   EDIT_LIMITS.pathChars,
 );
 
+/** The operation only a runtime with a voice host offers. */
+const VOICE_OPERATION: EditOperationName = "captions_from_voiceover";
+
 /** The `edit_timeline` arguments, built from the operation schemas it offers. */
 function editTimelineParameters(
   schemas: Record<EditOperationName, OperationSchema>,
+  voice: boolean,
 ): Record<string, unknown> {
   return {
     type: "object",
@@ -408,7 +417,11 @@ function editTimelineParameters(
         minItems: 1,
         maxItems: EDIT_LIMITS.operations,
         description: "Operations applied in order, atomically.",
-        items: { anyOf: EDIT_OPERATION_NAMES.map((name) => schemas[name]) },
+        items: {
+          anyOf: EDIT_OPERATION_NAMES.filter((name) => voice || name !== VOICE_OPERATION).map(
+            (name) => schemas[name],
+          ),
+        },
       },
     },
     required: ["operations"],
@@ -417,10 +430,13 @@ function editTimelineParameters(
 }
 
 /** `edit_timeline` when the runtime has a voice host: `add_clip` also takes `voiceLine`. */
-const VOICE_EDIT_TIMELINE_PARAMETERS = editTimelineParameters({
-  ...OPERATION_SCHEMAS,
-  add_clip: addClipSchema(true),
-});
+const VOICE_EDIT_TIMELINE_PARAMETERS = editTimelineParameters(
+  {
+    ...OPERATION_SCHEMAS,
+    add_clip: addClipSchema(true),
+  },
+  true,
+);
 
 const PARAMETERS: Record<EditingToolName, Record<string, unknown>> = {
   inspect_project: {
@@ -453,7 +469,7 @@ const PARAMETERS: Record<EditingToolName, Record<string, unknown>> = {
     },
     additionalProperties: false,
   },
-  edit_timeline: editTimelineParameters(OPERATION_SCHEMAS),
+  edit_timeline: editTimelineParameters(OPERATION_SCHEMAS, false),
   browse_presets: {
     type: "object",
     properties: {
@@ -503,6 +519,7 @@ const OP_SUMMARY: Record<EditOperationName, string> = {
   set_speed: "speed",
   retime_captions: "retime captions",
   captions_from_transcript: "captions from transcript",
+  captions_from_voiceover: "captions from voiceover",
   mount_composition: "mount composition",
   set_color_grade: "colour grade",
   set_audio_fx: "audio effects",
@@ -612,7 +629,12 @@ export function buildEditingTools(
     name,
     description:
       voice && name === EDITING_TOOL_NAMES.edit
-        ? DESCRIPTIONS[name].replace(ADD_CLIP_GUIDE, VOICE_ADD_CLIP_GUIDE)
+        ? DESCRIPTIONS[name]
+            .replace(ADD_CLIP_GUIDE, VOICE_ADD_CLIP_GUIDE)
+            .replace(
+              CAPTIONS_FROM_TRANSCRIPT_GUIDE,
+              `${CAPTIONS_FROM_TRANSCRIPT_GUIDE}\n${VOICE_CAPTIONS_GUIDE}`,
+            )
         : DESCRIPTIONS[name],
     parameters:
       voice && name === EDITING_TOOL_NAMES.edit ? VOICE_EDIT_TIMELINE_PARAMETERS : PARAMETERS[name],

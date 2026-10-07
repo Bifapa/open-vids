@@ -120,6 +120,11 @@ export interface ChapterNode extends StoryNodeBase {
   graphics: string;
   /** Audio intent; concrete music is an attached music node. */
   audio: string;
+  /**
+   * What the narrator says over this chapter: the source text of its voiceover line (captions show it). Build Story
+   * places the generated voice at the chapter start. Empty: the chapter has no narration.
+   */
+  narration: string;
   previewFrame: StoryFrameRef | null;
 }
 
@@ -219,6 +224,7 @@ export const STORY_CONTENT_FIELDS = {
     "captions",
     "graphics",
     "audio",
+    "narration",
     "previewFrame",
   ],
   video: ["title", "asset", "sourceIn", "sourceOut", "usageIntent", "previewFrame"],
@@ -393,6 +399,11 @@ export interface StoryNodeFacts {
   materialDuration?: number | null;
   /** Clips on the timeline that carry this node's id (built by Build Story), or null when none. */
   timeline: { clips: number; start: number; end: number } | null;
+  /**
+   * Chapters with narration text: whether the voiceover script has a generated voice for it (the line
+   * `chapter-<id>`'s selected take), how long it is, and whether the line's text still is the chapter's narration.
+   */
+  narration?: { generated: boolean; seconds: number | null; textCurrent: boolean };
 }
 
 /** `GET /api/projects/:id/story`. */
@@ -413,7 +424,8 @@ export interface StoryView {
 
 /**
  * What a built unit is: a chapter's A-roll, the clip of one attached material (B-roll video, picture, motion
- * graphic, sound effect), a music bed (spanning the chapters it is attached to), or the story's captions.
+ * graphic, sound effect), a music bed (spanning the chapters it is attached to), a chapter's narration (its voice
+ * line's selected take), or the story's captions.
  */
 export const STORY_SYNC_ROLES = [
   "a_roll",
@@ -422,6 +434,7 @@ export const STORY_SYNC_ROLES = [
   "motion",
   "sfx",
   "music",
+  "narration",
   "captions",
 ] as const;
 export type StorySyncRole = (typeof STORY_SYNC_ROLES)[number];
@@ -590,6 +603,7 @@ export interface ChapterFieldsInput {
   captions?: boolean;
   graphics?: string;
   audio?: string;
+  narration?: string;
   previewFrame?: StoryFrameRef | null;
 }
 
@@ -1134,6 +1148,8 @@ function storedNode(value: unknown, field: string): StoryNode {
         captions: bool(raw.captions, `${field}.captions`),
         graphics: text(raw.graphics, `${field}.graphics`),
         audio: text(raw.audio, `${field}.audio`),
+        // Graphs stored before the field existed have none: they read as "no narration".
+        narration: text(raw.narration ?? "", `${field}.narration`),
         previewFrame: nullable(raw.previewFrame, (v) => frameRef(v, `${field}.previewFrame`)),
       };
     case "video": {
@@ -1509,6 +1525,7 @@ function chapterFields({ at, has, raw }: FieldReader): ChapterFieldsInput {
   if (has("captions")) set.captions = bool(raw.captions, at("captions"));
   if (has("graphics")) set.graphics = text(raw.graphics, at("graphics"));
   if (has("audio")) set.audio = text(raw.audio, at("audio"));
+  if (has("narration")) set.narration = text(raw.narration, at("narration"));
   if (has("previewFrame"))
     set.previewFrame = nullable(raw.previewFrame, (v) => frameRef(v, at("previewFrame")));
   return set;

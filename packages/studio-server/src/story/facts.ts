@@ -6,6 +6,8 @@ import {
   type TimelineSnapshot,
 } from "@hyperframes/agent-protocol";
 
+import { narrationChapter } from "./compile.js";
+
 type OnTimeline = NonNullable<StoryNodeFacts["timeline"]>;
 
 const round3 = (value: number) => Math.round(value * 1000) / 1000;
@@ -33,7 +35,9 @@ export function timelineFacts(
   const clips = timeline?.clips ?? [];
   const byNode = new Map<string, TimelineClip[]>();
   for (const clip of clips) {
-    const node = clip.provenance?.storyNode;
+    const stamped = clip.provenance?.storyNode;
+    // A chapter's narration clip is stamped with its own node id; it is the chapter's on the timeline.
+    const node = stamped ? (narrationChapter(stamped) ?? stamped) : stamped;
     if (!node) continue;
     const list = byNode.get(node) ?? [];
     list.push(clip);

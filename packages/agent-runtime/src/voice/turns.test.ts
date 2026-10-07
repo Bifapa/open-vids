@@ -261,6 +261,55 @@ describe("a voiceover turn", () => {
     }
   });
 
+  it("updates the script instead of replacing it: lines the call does not carry stay, with their takes, in place", async () => {
+    const { fixture, voice, chat } = await setup();
+    try {
+      voice.voice = voice.presetList[0] ?? null;
+      const old = {
+        id: "keep-me",
+        text: "An earlier line.",
+        speakerText: "An earlier line.",
+        style: "",
+        takes: [],
+        selectedTakeId: null,
+      };
+      voice.lines = [
+        old,
+        { ...old, id: "chapter-a", text: "Old words.", speakerText: "Old words." },
+        { ...old, id: "tail", text: "The last line.", speakerText: "The last line." },
+      ];
+      const results: HostToolResult[] = [];
+      fixture.backend.promptScript = async (_input, session) => {
+        if (session.input.agent !== "director" || results.length > 0) return "completed";
+        // A foreign tag fails the dialect check after the script was saved: nothing is generated or paid.
+        results.push(
+          await session.callTool("generate_voiceover", {
+            lines: [
+              { id: "chapter-a", text: "New words.", speakerText: `New ${FOREIGN_TAG} words.` },
+              { id: "chapter-b", text: "Second chapter." },
+            ],
+          }),
+        );
+        return "completed";
+      };
+      await fixture.turns.start(chat.id, { prompt: "Narrate the chapters" });
+      await ended(fixture, chat.id);
+
+      expect(results[0]?.isError).toBe(true);
+      // The replaced line kept its position, the others are untouched, the new one is appended.
+      expect(voice.lines.map((line) => [line.id, line.text])).toEqual([
+        ["keep-me", "An earlier line."],
+        ["chapter-a", "New words."],
+        ["tail", "The last line."],
+        ["chapter-b", "Second chapter."],
+      ]);
+      // The check covers the lines the call carried, not the rest of the script.
+      expect(voice.callsOf("check")).toEqual([{ lineIds: ["chapter-a", "chapter-b"] }]);
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
   it("tells the agent there is no voiceover when the user declines to choose a voice", async () => {
     const { fixture, voice, chat } = await setup();
     try {

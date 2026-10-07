@@ -1,3 +1,4 @@
+import { existsSync, statSync } from "node:fs";
 import {
   isChapter,
   isMaterial,
@@ -10,6 +11,8 @@ import {
   type StoryAttachment,
   type StoryGraph,
   type StorySyncRole,
+  type StoryNodeFacts,
+  type VoiceScript,
 } from "@hyperframes/agent-protocol";
 import { mediaBounds, readAssetRanges } from "../editing/assetRanges.js";
 import { pickedFragment } from "../helpers/pickedRange.js";
@@ -18,6 +21,9 @@ import type { MediaFacts } from "../editing/mediaFacts.js";
 import type { ResolvedProject, StudioApiAdapter } from "../types.js";
 import { cleanChapterAroll, fitToEstimate, type AnalysisLookup } from "./aroll.js";
 import { StoryFailure } from "./errors.js";
+import { readScript, selectedTake } from "../voice/project/takesStore.js";
+import { resolveWithinProject } from "../helpers/safePath.js";
+import { takeCaptionWords } from "../voice/project/captionWords.js";
 
 /**
  * Tracks Build Story writes: the A-roll on track 0, then B-roll video, pictures, motion graphics, music beds and sound
@@ -30,6 +36,7 @@ export const STORY_TRACKS = {
   motion: 3,
   music: 4,
   sfx: 5,
+  voice: 6,
 } as const;
 
 const DEFAULT_PICTURE_SECONDS = 4;
@@ -59,11 +66,34 @@ export interface IntentUnit {
   ops: EditOperation[];
 }
 
+/** The voice line a chapter's narration is stored as in the project's voiceover script. */
+export const narrationLine = (chapterId: string) => `chapter-${chapterId}`;
+
+/** The story-node id a chapter's narration clip is stamped with (it is not a graph node of its own). */
+export const narrationNode = (chapterId: string) => `narration:${chapterId}`;
+
+/** The chapter a narration clip's `data-ov-story-node` belongs to, or null for any other node id. */
+export function narrationChapter(node: string): string | null {
+  return node.startsWith("narration:") ? node.slice("narration:".length) : null;
+}
+
+/**
+ * A chapter's narration placed from its generated voice. The take's identity is part of the intent: a regenerated
+ * take (same line, new audio) makes the unit changed even when the clip would look the same.
+ */
+export interface IntentNarration extends IntentUnit {
+  take: { id: string; fingerprint: string; start: number; end: number };
+  /** The chapter's narration as caption words: source text, take timings relative to the take's start. */
+  words: Array<{ text: string; start: number; end: number }> | null;
+}
+
 export interface IntentSection {
   chapter: ChapterNode;
   /** Length of the section as the graph builds it: the cleaned A-roll, or the estimated duration without speech. */
   length: number;
   aRoll: IntentUnit;
+  /** The chapter's narration placed from its generated voice (null: no narration, or its voice is not generated yet). */
+  narration: IntentNarration | null;
   /** One unit per attached B-roll video, picture or motion graphic, in node order. */
   materials: IntentUnit[];
 }
@@ -88,6 +118,14 @@ export interface StoryIntent {
   /** Every source the chapters' A-roll reads. */
   sources: Set<string>;
   warnings: string[];
+  /**
+   * The caption words of a voice take (any take of the script, not only the selected one: a unit a rebuild keeps was
+   * built from the take it recorded), with the take's start in its file. Null: no such line or take.
+   */
+  voiceWords: (
+    lineId: string,
+    takeId: string,
+  ) => { start: number; words: Array<{ text: string; start: number; end: number }> | null } | null;
 }
 
 interface Span {
@@ -114,6 +152,84 @@ function placeInChapter(
 
 const ROLE_OF = { video: "b_roll", picture: "picture", motion: "motion" } as const;
 
+/** Whether a chapter's narration has a generated voice (the line's selected take), for the story view. */
+export function narrationFact(
+  chapter: ChapterNode,
+  script: VoiceScript,
+): NonNullable<StoryNodeFacts["narration"]> {
+  const line = script.lines.find((entry) => entry.id === narrationLine(chapter.id));
+  const take = line ? selectedTake(line) : null;
+  return {
+    generated: take !== null,
+    seconds: take ? round3(take.end - take.start) : null,
+    textCurrent: line !== undefined && line.text.trim() === chapter.narration.trim(),
+  };
+}
+
+/**
+ * The chapter's narration as a unit: its voice line's selected take at the chapter start. Narration whose voice is not
+ * generated yet places nothing (an `add_clip voiceLine` without a take would abort the whole batch) and is reported.
+ */
+function compileNarration(
+  chapter: ChapterNode,
+  script: VoiceScript,
+  projectDir: string,
+  warnings: string[],
+): IntentNarration | null {
+  if (chapter.narration.trim() === "") return null;
+  const lineId = narrationLine(chapter.id);
+  const line = script.lines.find((entry) => entry.id === lineId);
+  const take = line ? selectedTake(line) : null;
+  if (!line || !take) {
+    warnings.push(
+      `${chapter.title}: narration has no generated voice yet; nothing was placed (line "${lineId}").`,
+    );
+    return null;
+  }
+  // A voice file that is gone (deleted from the library, assets not copied with the project) would fail the whole
+  // atomic batch at apply time: say so here and leave the narration out.
+  const file = resolveWithinProject(projectDir, take.file);
+  if (file === null || !existsSync(file) || !statSync(file).isFile()) {
+    warnings.push(
+      `${chapter.title}: the narration's voice file is missing (${take.file}); nothing was placed.`,
+    );
+    return null;
+  }
+  if (line.text.trim() !== chapter.narration.trim()) {
+    warnings.push(
+      `${chapter.title}: the narration text changed after its voice was generated; the old voice was placed (generate it again).`,
+    );
+  }
+  const words = takeCaptionWords(line, take);
+  if (words === null && chapter.captions) {
+    warnings.push(
+      `${chapter.title}: the narration's voice has no word timings; its captions follow the A-roll speech (generate it again).`,
+    );
+  }
+  return {
+    node: narrationNode(chapter.id),
+    role: "narration",
+    title: `${chapter.title} narration`,
+    ops: [
+      {
+        op: "add_clip",
+        asset: "",
+        voiceLine: lineId,
+        start: 0,
+        track: STORY_TRACKS.voice,
+        duration: round3(take.end - take.start),
+      },
+    ],
+    take: {
+      id: take.id,
+      fingerprint: take.fingerprint ?? take.requestHash,
+      start: take.start,
+      end: take.end,
+    },
+    words,
+  };
+}
+
 /**
  * Compiles the graph into what each section should hold, deterministically: chapters in `storyOrder`; each
  * chapter's A-roll is its source ranges cleaned like a rough cut, back to back; attached material is placed inside
@@ -123,6 +239,7 @@ const ROLE_OF = { video: "b_roll", picture: "picture", motion: "motion" } as con
 export async function compileIntent(env: CompileEnv, graph: StoryGraph): Promise<StoryIntent> {
   const warnings: string[] = [];
   const ranges = readAssetRanges(env.project.dir);
+  const script = readScript(env.project.dir);
   const order = storyOrder(graph);
   const byId = new Map(graph.nodes.map((node) => [node.id, node]));
   const chapters = order.chapters.flatMap((id) => {
@@ -155,10 +272,18 @@ export async function compileIntent(env: CompileEnv, graph: StoryGraph): Promise
     const cleaned = fitToEstimate(chapter, await cleanChapterAroll(chapter, env.lookup, ranges));
     warnings.push(...cleaned.warnings);
     const speech = cleaned.pieces.length > 0 && cleaned.total > 0;
-    const length = round3(speech ? cleaned.total : chapter.estimatedDuration);
+    const narration = compileNarration(chapter, script, env.project.dir, warnings);
+    const narrated = narration ? round3(narration.take.end - narration.take.start) : 0;
+    // Without A-roll the chapter is as long as the narration needs; over A-roll the cleaned speech sets the length.
+    const length = round3(speech ? cleaned.total : Math.max(chapter.estimatedDuration, narrated));
     if (!speech && chapter.sourceRanges.length > 0) {
       warnings.push(
-        `${chapter.title}: no A-roll could be placed; the chapter is ${length} s long (its estimated duration).`,
+        `${chapter.title}: no A-roll could be placed; the chapter is ${length} s long (${narrated > chapter.estimatedDuration ? "the narration's length" : "its estimated duration"}).`,
+      );
+    }
+    if (speech && narrated > length + MIN_CLIP_SECONDS) {
+      warnings.push(
+        `${chapter.title}: the narration is ${narrated} s but the chapter's A-roll is ${length} s; it runs into the next chapter.`,
       );
     }
     const aRollOps: EditOperation[] = [];
@@ -358,6 +483,7 @@ export async function compileIntent(env: CompileEnv, graph: StoryGraph): Promise
       chapter,
       length,
       aRoll: { node: chapter.id, role: "a_roll", title: chapter.title, ops: aRollOps },
+      narration,
       materials,
     });
   }
@@ -407,5 +533,10 @@ export async function compileIntent(env: CompileEnv, graph: StoryGraph): Promise
     }
   }
 
-  return { sections, music, captionPreset, sources, warnings };
+  const voiceWords: StoryIntent["voiceWords"] = (lineId, takeId) => {
+    const line = script.lines.find((entry) => entry.id === lineId);
+    const take = line?.takes.find((entry) => entry.id === takeId);
+    return line && take ? { start: take.start, words: takeCaptionWords(line, take) } : null;
+  };
+  return { sections, music, captionPreset, sources, warnings, voiceWords };
 }

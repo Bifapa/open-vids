@@ -346,6 +346,20 @@ export type EditOperation =
       /** Longest cue in words (default 6). */
       maxWords?: number;
     }
+  /**
+   * Write the composition's captions from the voiceover on the timeline: every clip that speaks a voice line
+   * (`data-ov-voice-line`) contributes the line's own text, timed by the words of the take it plays (its in-point,
+   * length and speed taken into account). Needs the project's voiceover script; takes without recorded word timings
+   * are transcribed on the spot.
+   */
+  | {
+      op: "captions_from_voiceover";
+      /** Caption preset; default: the first bundled one. */
+      preset?: string;
+      track?: number;
+      /** Only the clips that speak these voice lines; default: every voiceover clip. */
+      lines?: string[];
+    }
   /** Mount an existing composition file of the project as a clip, the way a Studio drop does. */
   | {
       op: "mount_composition";
@@ -430,6 +444,7 @@ export const EDIT_OPERATION_NAMES = [
   "set_speed",
   "retime_captions",
   "captions_from_transcript",
+  "captions_from_voiceover",
   "mount_composition",
   "set_color_grade",
   "set_audio_fx",

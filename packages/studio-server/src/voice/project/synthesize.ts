@@ -45,12 +45,47 @@ export interface SynthesizerOptions {
   /** Speech recognition for splitting scenes; `null`/failing makes every scene fall back to one request per line. */
   transcribe: TranscribeMedia;
   now?: () => number;
+  /** Waits `ms` (rejects when the signal aborts); replaced in tests. */
+  sleep?: (ms: number, signal: AbortSignal) => Promise<void>;
 }
 
 /** The scratch directory of in-progress work; never under `assets/`. */
 export const VOICE_TMP_DIR = ".hyperframes/voice/tmp";
 
 const KEPT_PROGRESS = 256;
+
+/** A per-minute rate limit is waited out when the provider asks for at most this long, seconds. */
+const MAX_RATE_WAIT_SECONDS = 65;
+/** Waits per request before the rate limit is reported. */
+const MAX_RATE_RETRIES = 4;
+
+/** Seconds to wait for a per-minute rate limit worth waiting out; null for any other error. */
+function perMinuteWait(error: unknown): number | null {
+  if (!(error instanceof VoiceFailure) || error.code !== "rate_limited") return null;
+  if (error.params?.daily) return null;
+  const seconds = error.params?.retryAfterSeconds;
+  return typeof seconds === "number" && seconds >= 0 && seconds <= MAX_RATE_WAIT_SECONDS
+    ? seconds
+    : null;
+}
+
+function sleepFor(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    if (signal.aborted) {
+      reject(signal.reason);
+      return;
+    }
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(signal.reason);
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+}
 
 /** An audio file staged in the scratch directory, with the lines it serves. */
 interface Artifact {
@@ -85,6 +120,8 @@ interface Run {
   usdCost: number | null;
   sequence: number;
   progress: VoiceSynthesisProgress;
+  /** Speech recognition failed or is unavailable: no other line of this run asks again. */
+  recognitionDown: boolean;
 }
 
 /** The research registry speaks research errors: `cancelled` and `invalid_request` are the same words here. */
@@ -109,9 +146,11 @@ export class VoiceSynthesizer {
   private readonly registry = new RequestRegistry();
   private readonly progress = new Map<string, VoiceSynthesisProgress>();
   private readonly now: () => number;
+  private readonly sleep: (ms: number, signal: AbortSignal) => Promise<void>;
 
   constructor(private readonly options: SynthesizerOptions) {
     this.now = options.now ?? Date.now;
+    this.sleep = options.sleep ?? sleepFor;
   }
 
   private key(project: ResolvedProject, requestId: string): string {
@@ -167,6 +206,7 @@ export class VoiceSynthesizer {
       usdCost: 0,
       sequence: 0,
       progress,
+      recognitionDown: false,
     };
     try {
       const result = await this.run(run);
@@ -252,10 +292,9 @@ export class VoiceSynthesizer {
 
   /** One provider request, and for a scene the split of its audio into the lines. */
   private async generate(run: Run, plan: RequestPlan): Promise<void> {
-    const { engine } = this.options;
     run.guard.assertLive();
     run.progress.lineId = plan.lines[0]?.line.id ?? null;
-    const audio = await engine.synthesize({ ...plan.input, signal: run.guard.signal });
+    const audio = await this.request(run, plan);
     run.guard.assertLive();
     if (!audio.cached) run.requests += 1;
     run.usdCost =
@@ -272,7 +311,7 @@ export class VoiceSynthesizer {
           line: only,
           start: 0,
           end: audio.durationSeconds,
-          words: undefined,
+          words: await this.words(run, artifact),
         });
         run.progress.done += 1;
       }
@@ -308,8 +347,53 @@ export class VoiceSynthesizer {
     for (const single of singles) await this.generate(run, single);
   }
 
-  private async split(run: Run, plan: RequestPlan, artifact: Artifact, durationSeconds: number) {
-    let words: TimedWord[];
+  /**
+   * One provider request. A per-minute rate limit (the provider says when to come back, within a minute) is waited
+   * out and asked again; a daily limit or a long wait fails as it is.
+   */
+  private async request(run: Run, plan: RequestPlan): Promise<EngineAudio> {
+    const { engine } = this.options;
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        return await engine.synthesize({ ...plan.input, signal: run.guard.signal });
+      } catch (error) {
+        run.guard.assertLive();
+        const seconds = perMinuteWait(error);
+        if (seconds === null || attempt >= MAX_RATE_RETRIES) throw error;
+        const ms = (seconds + 1) * 1000;
+        run.progress.waitingUntil = this.now() + ms;
+        try {
+          await this.sleep(ms, run.guard.signal);
+        } finally {
+          delete run.progress.waitingUntil;
+        }
+        run.guard.assertLive();
+      }
+    }
+  }
+
+  /**
+   * The recognised words of a one-line take (relative to its start), for captions. Never fails the generation: when
+   * recognition is unavailable or fails the words stay absent, one note says so, and no further line of the run tries.
+   */
+  private async words(run: Run, artifact: Artifact): Promise<TimedWord[] | undefined> {
+    if (run.recognitionDown) return undefined;
+    const heard = await this.recognise(run, artifact);
+    if ("problem" in heard) {
+      run.notes.push(
+        `Word timings were not recorded: ${heard.problem}. Captions from the voiceover will transcribe the takes when asked.`,
+      );
+      return undefined;
+    }
+    return heard.words.length > 0 ? heard.words : undefined;
+  }
+
+  /** The recognised words of a staged file, or why there are none (recognition is then not asked again this run). */
+  private async recognise(
+    run: Run,
+    artifact: Artifact,
+  ): Promise<{ words: TimedWord[] } | { problem: string }> {
+    let problem: string;
     try {
       const language = run.script.language?.split("-")[0];
       const heard = await this.options.transcribe({
@@ -317,22 +401,26 @@ export class VoiceSynthesizer {
         ...(language && { language }),
         signal: run.guard.signal,
       });
-      if ("unavailable" in heard) {
-        return {
-          ok: false as const,
-          reason: `speech recognition is unavailable (${heard.unavailable})`,
-        };
+      if (!("unavailable" in heard)) {
+        run.guard.assertLive();
+        return { words: heard.words };
       }
-      words = heard.words;
+      problem = `speech recognition is unavailable (${heard.unavailable})`;
     } catch (error) {
       run.guard.assertLive();
-      const message = error instanceof Error ? error.message : String(error);
-      return { ok: false as const, reason: `speech recognition failed (${message})` };
+      problem = `speech recognition failed (${error instanceof Error ? error.message : String(error)})`;
     }
     run.guard.assertLive();
+    run.recognitionDown = true;
+    return { problem };
+  }
+
+  private async split(run: Run, plan: RequestPlan, artifact: Artifact, durationSeconds: number) {
+    const heard = await this.recognise(run, artifact);
+    if ("problem" in heard) return { ok: false as const, reason: heard.problem };
     return splitScene(
       plan.lines.map((entry) => ({ id: entry.line.id, spoken: entry.spoken })),
-      words,
+      heard.words,
       durationSeconds,
     );
   }
@@ -386,7 +474,9 @@ export class VoiceSynthesizer {
                 const { take, existing } = this.takeOf(piece, rel, next, by, now);
                 next = {
                   ...next,
-                  takes: existing ? next.takes : [...next.takes, take],
+                  takes: existing
+                    ? next.takes.map((entry) => (entry.id === take.id ? take : entry))
+                    : [...next.takes, take],
                   selectedTakeId: take.id,
                 };
                 results.set(line.id, {
@@ -517,7 +607,11 @@ export class VoiceSynthesizer {
         Math.abs(take.start - piece.start) < 0.005 &&
         Math.abs(take.end - piece.end) < 0.005,
     );
-    if (same) return { take: same, existing: true };
+    // The same sound again keeps its take; recognised words it lacked (a take from before they were recorded) are added.
+    if (same) {
+      const words = piece.words && piece.words.length > 0 ? piece.words : undefined;
+      return { take: same.words || !words ? same : { ...same, words }, existing: true };
+    }
     const share =
       piece.artifact.usdCost === null
         ? null

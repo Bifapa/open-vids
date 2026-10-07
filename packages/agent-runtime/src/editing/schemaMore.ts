@@ -88,6 +88,25 @@ export const MORE_OPERATION_SCHEMAS = {
     },
     ["preset"],
   ),
+  captions_from_voiceover: operationSchema(
+    "captions_from_voiceover",
+    "Write the composition's captions from the voiceover clips on the timeline (clips placed with add_clip voiceLine): each line's own text timed by the words of its take.",
+    {
+      preset: str(
+        "Caption preset name from browse_presets (default: the first one).",
+        EDIT_LIMITS.idChars,
+      ),
+      track: track("Optional track for the captions."),
+      lines: {
+        type: "array",
+        minItems: 1,
+        maxItems: 200,
+        items: { type: "string", minLength: 1, maxLength: 64 },
+        description: "Caption only the clips that speak these voiceover line ids (default: all).",
+      },
+    },
+    [],
+  ),
   mount_composition: operationSchema(
     "mount_composition",
     "Mount an existing composition file of the project as a clip.",

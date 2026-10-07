@@ -35,6 +35,7 @@ import {
 import { addComponent, mountComposition, undoInstalls } from "./opsComponent.js";
 import { duckAudio, setAudioFx, setColorGrade, setVolumeAutomation } from "./opsEffects.js";
 import { captionsFromTranscript } from "./opsTranscript.js";
+import { captionsFromVoiceover } from "./opsVoiceCaptions.js";
 import { recallApplied, rememberApplied } from "./replay.js";
 import { editingVersion, findClip, parseComposition, toSnapshot } from "./timeline.js";
 import { overlapWarnings } from "./warnings.js";
@@ -80,6 +81,8 @@ async function runOperation(
       return retimeCaptions(env, batch, op);
     case "captions_from_transcript":
       return captionsFromTranscript(env, batch, op);
+    case "captions_from_voiceover":
+      return captionsFromVoiceover(env, batch, op);
     case "mount_composition":
       return mountComposition(env, batch, op);
     case "set_color_grade":
@@ -182,6 +185,7 @@ export async function applyEdits(
     ...env,
     compositionPath: path,
     ...(request.turnId !== undefined && { turnId: request.turnId }),
+    ...(options.signal && { signal: options.signal }),
   };
   const { signal } = options;
   const { requestId } = request;
@@ -223,6 +227,7 @@ export async function applyEdits(
     touched: new Set(),
     warnings: [],
     hadPlaceholder: before.clips.some((clip) => isUntouchedTemplatePlaceholder(clip.element)),
+    afterCommit: [],
   };
   const results: EditOperationResult[] = [];
   const writes: PendingWrite[] = [];
@@ -270,6 +275,20 @@ export async function applyEdits(
     // A refused batch leaves nothing behind, the registry files its add_component operations installed included.
     undoInstalls(env.project.dir, batch);
     throw error;
+  }
+
+  if (!request.dryRun) {
+    // The batch is in: what an operation only wanted written once it was (recognised voiceover words) goes now. The
+    // batch itself succeeded, so a failure here is reported, not thrown.
+    for (const write of batch.afterCommit) {
+      try {
+        await write();
+      } catch (error) {
+        batch.warnings.push(
+          `A cache the edit filled could not be saved: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
   }
 
   const changedFiles = writes.map((write) => write.path);

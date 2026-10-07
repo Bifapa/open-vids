@@ -1,10 +1,19 @@
 import type { VoiceCatalogEntry, VoiceModelInfo } from "@hyperframes/agent-protocol";
-import { formatNumber, isTranslationKey, t } from "../i18n";
+import { formatNumber, i18n, isTranslationKey, t } from "../i18n";
 
 /** `similarity_boost` → `Similarity boost`: the label of a control id Studio has no wording for. */
 export function humanizeId(id: string): string {
   const words = id.replace(/[_-]+/g, " ").trim();
   return words.length === 0 ? id : words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+/** A BCP-47 language in words, in Studio's language (`ru` → `Russian`); the code itself when it cannot be named. */
+export function languageName(code: string): string {
+  try {
+    return new Intl.DisplayNames([i18n.language || "en"], { type: "language" }).of(code) ?? code;
+  } catch {
+    return code;
+  }
 }
 
 function labelFor(prefix: "voice.control." | "voice.filter.", id: string): string {

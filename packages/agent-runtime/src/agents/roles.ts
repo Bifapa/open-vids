@@ -1,6 +1,6 @@
 import { AGENT_DISPLAY_NAMES, type SpecialistId } from "@hyperframes/agent-protocol";
 import { DESIGN_DIRECTOR, DESIGN_SPECIALIST } from "../design/prompt.js";
-import { VOICE_AUDIO, VOICE_DIRECTOR } from "../voice/prompt.js";
+import { VOICE_AUDIO, VOICE_CAPTIONS, VOICE_DIRECTOR } from "../voice/prompt.js";
 import { FRAMES_ROLE_PROMPT } from "../editing/frames.tools.js";
 import { CROSS_PROJECT_ROLE_PROMPT } from "../crossProject/tools.js";
 import { disabledSpecialists } from "./inherit.js";
@@ -119,6 +119,7 @@ function inheritedWork(id: SpecialistId, options: RoleOptions): string {
     `${AGENT_DISPLAY_NAMES[id]} is off in this chat: you do its work yourself (${SPECIALIST_FOCUS[id]}). Its working rules (the team block of each turn names the tools you have for it):`,
     withoutShared(SPECIALIST_TOOLING[id]),
     ...(id === "audio" && options.voice === true ? [VOICE_AUDIO] : []),
+    ...(id === "editor" && options.voice === true ? [VOICE_CAPTIONS] : []),
     // The read-only reading lines of the other specialists repeat what the Director already knows.
     ...(id === "editor" || id === "vision" ? [SPECIALIST_ANALYSIS[id]] : []),
     ...(id === "vision" ? [] : [withoutShared(SPECIALIST_STORY[id])]),
@@ -183,7 +184,7 @@ export function specialistInstructions(id: SpecialistId, options: RoleOptions = 
 
 You receive tasks from the Director, who coordinates the work with the user; you never talk to the user directly. Do exactly the task you were given, stay within your domain, and do not start unrelated work. If the task cannot be done as written, do the closest reasonable thing and say why.
 
-${SPECIALIST_TOOLING[id]}${id === "audio" && options.voice === true ? `\n${VOICE_AUDIO}` : ""}
+${SPECIALIST_TOOLING[id]}${(id === "audio" || id === "editor") && options.voice === true ? `\n${id === "audio" ? `${VOICE_AUDIO}\n` : ""}${VOICE_CAPTIONS}` : ""}
 
 ${SPECIALIST_ANALYSIS[id]}
 

@@ -1607,3 +1607,26 @@ could be a noun). Keys are listed by area; a key that is not here reads as it sa
 - `voice.issue.ssml_unsupported` — “break” stands for the SSML pause tag, written without angle brackets.
 - `voice.toast.laterClipLocked` — Error toast: with ripple editing on, a take of another length would move the clips after it on the track, but one of them is locked, so nothing changed. {clips} is a comma-separated list of the locked clips’ names.
 - `media.origin.generated` — Origin column of the Media library for a voiceover file the app generated (not imported, researched or downloaded).
+
+## voice-catalog
+
+- `voice.catalog.noLanguage` — Note above the voice list of the voice setup window, shown when the script's language matched no voice label so the list was loaded without the language filter. {language} is the language's name in the UI language (Russian / русский).
+
+## story-narration
+
+- `story.field.narration` — Label of the chapter's narration field in the Story inspector (also its Narration section title and the 'Set by you' chip). Narration = the narrator's voiceover text for the chapter.
+- `story.chapter.narrationPlaceholder` — Placeholder of the narration text area in the chapter inspector.
+- `story.chapter.narrationHint` — Hint under the narration text area in the chapter inspector: the Build Story button generates the voice and puts it on the timeline.
+- `story.sync.role.narration` — Name of the narration unit (the chapter's voiceover clip) in the Story sync report, next to A-roll, B-roll, Music, Captions.
+
+## voice-captions
+
+- `voice.captions.button` — Button in the Voiceover tab: captions from the narration clips on the timeline
+- `voice.captions.hint` — Tooltip of the Add captions button
+- `voice.captions.reason.unavailable` — Why the Add captions button is disabled: no timeline operations in this host
+- `voice.captions.reason.noClips` — Why the Add captions button is disabled: no voiceover clip on the timeline
+- `voice.history.addCaptions` — Undo history label of the Add captions button
+- `voice.toast.captionsAdded` — Toast after captions were written from the voiceover
+- `voice.toast.captionsSkipped` — Toast: some voiceover clips could not be captioned (count)
+- `voice.toast.captionsNone` — Toast when the captions operation wrote nothing
+- `voice.generate.waiting` — Progress line while the voice generation waits out the provider's per-minute rate limit; {seconds} counts down

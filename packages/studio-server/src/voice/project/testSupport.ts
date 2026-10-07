@@ -64,6 +64,8 @@ export class FakeEngine implements VoiceEngine {
   failure: Error = new Error("provider down");
   /** A provider that reads the same request into the same bytes every time (a local TTS server). */
   deterministic = false;
+  /** The next syntheses fail with these, one each, before any other rule applies. */
+  readonly queuedFailures: Error[] = [];
   private written = 0;
 
   /** The cache lost its entries (cleared, or the project was opened on another machine). */
@@ -96,6 +98,8 @@ export class FakeEngine implements VoiceEngine {
   async synthesize(input: EngineSynthesisInput): Promise<EngineAudio> {
     if (this.gate) await this.gate;
     input.signal.throwIfAborted();
+    const queued = this.queuedFailures.shift();
+    if (queued) throw queued;
     if (this.failAfter !== null && this.calls.length >= this.failAfter) throw this.failure;
     const request: Request = {
       preset: input.preset,
@@ -204,6 +208,7 @@ export function createVoiceFixture(
   options: {
     preset?: Partial<VoicePreset>;
     transcribe?: TranscribeMedia;
+    sleep?: (ms: number, signal: AbortSignal) => Promise<void>;
   } = {},
 ): VoiceFixture {
   const root = mkdtempSync(join(tmpdir(), "openvids-voice-project-"));
@@ -220,7 +225,11 @@ export function createVoiceFixture(
       const last = engine.calls[engine.calls.length - 1];
       return { words: wordsOf(last?.text ?? ""), language: "en", producer: "fake" };
     });
-  const service = new ProjectVoiceService({ engine, transcribe });
+  const service = new ProjectVoiceService({
+    engine,
+    transcribe,
+    ...(options.sleep && { sleep: options.sleep }),
+  });
   return {
     root,
     project,

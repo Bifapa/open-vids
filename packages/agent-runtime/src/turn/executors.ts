@@ -221,6 +221,7 @@ export async function openTurnTools(
         turnId: run.turn.id,
         turnSignal: signal,
         storyOptions: run.storyOptions,
+        voice: options.voice !== undefined,
       })
     : null;
   run.design = designHost

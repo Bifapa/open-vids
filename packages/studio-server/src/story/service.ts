@@ -1,7 +1,9 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, statSync } from "node:fs";
+import { join } from "node:path";
 import {
   STORY_GRAPH_PATH,
+  VOICE_SCRIPT_PATH,
   boundBuildWarnings,
   isChapter,
   storyOrder,
@@ -49,7 +51,8 @@ import type { HistoryWho } from "../history/historyLog.js";
 import type { ResolvedProject, StudioApiAdapter } from "../types.js";
 import { cleanChapterAroll, type AnalysisLookup } from "./aroll.js";
 import { applyUserAuthorship } from "./authorship.js";
-import { compileIntent } from "./compile.js";
+import { compileIntent, narrationFact } from "./compile.js";
+import { readScript } from "../voice/project/takesStore.js";
 import { StoryFailure, isStoryFailure } from "./errors.js";
 import { timelineFacts } from "./facts.js";
 import { readLedger, writeLedger, type SyncLedger } from "./ledger.js";
@@ -119,6 +122,15 @@ function captionsFingerprint(
     element.removeAttribute("data-hf-id");
   }
   return fingerprint(serializeModel(parsed));
+}
+
+/** Fingerprint of the project's voiceover script: a regenerated or re-selected take changes what a rebuild plans. */
+function voiceKey(project: ResolvedProject): string {
+  try {
+    return fingerprint(readFileSync(join(project.dir, VOICE_SCRIPT_PATH), "utf-8"));
+  } catch {
+    return "no-voice";
+  }
 }
 
 function timelineStateOf(
@@ -228,9 +240,13 @@ export class StoryService {
     const onTimeline = timelineFacts(graph, read?.snapshot ?? null);
     const lengths = await this.materialLengths(project, stored);
     const facts: Record<string, StoryNodeFacts> = {};
+    const script = readScript(project.dir);
     for (const node of graph.nodes) {
       const entry: StoryNodeFacts = { timeline: onTimeline.get(node.id) ?? null };
       if (isChapter(node) && lengths.has(node.id)) entry.materialDuration = lengths.get(node.id);
+      if (isChapter(node) && node.narration.trim() !== "") {
+        entry.narration = narrationFact(node, script);
+      }
       facts[node.id] = entry;
     }
     return {
@@ -269,6 +285,7 @@ export class StoryService {
       captionsFingerprint(project, read.snapshot.composition.path, read.model.clips) ??
         "no-captions",
       rangesKey(readAssetRanges(project.dir)),
+      voiceKey(project),
       ...sources.map((source, i) => `${source}@${versions[i]}`),
     ].join("\0");
     const cached = this.syncCache.get(project.dir);

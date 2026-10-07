@@ -11,6 +11,7 @@ import {
   type StorySourceRange,
   type StorySyncReport,
 } from "@hyperframes/agent-protocol";
+import { isBetaFeatureEnabled } from "../betaFeatures";
 import { Button, IconButton, Input, Select } from "../components/ui";
 import { useTranslation } from "../i18n";
 import { ChapterTimelineSection } from "./ChapterTimelineSection";
@@ -365,6 +366,26 @@ export function ChapterInspector({
           onDetach={detach}
         />
       </Section>
+
+      {isBetaFeatureEnabled("voiceover") && (
+        <Section title={t("story.field.narration")}>
+          <Field
+            label={t("story.field.narration")}
+            edited={edited.has("narration")}
+            hint={t("story.chapter.narrationHint")}
+            top
+          >
+            <TextAreaField
+              label={t("story.field.narration")}
+              value={chapter.narration}
+              rows={4}
+              disabled={readOnly}
+              placeholder={t("story.chapter.narrationPlaceholder")}
+              onCommit={(narration) => set("narration", narration)}
+            />
+          </Field>
+        </Section>
+      )}
 
       <Section title={t("story.chapter.section.timing")}>
         <Field

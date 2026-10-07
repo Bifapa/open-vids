@@ -8,6 +8,7 @@ import { voiceClipsOfLine } from "../clip/voiceClipPatch";
 import { useVoiceClipOpsContext } from "../clip/voiceClipOpsContext";
 import { selectedTakeOf } from "../script/voiceScriptStore";
 import { useVoiceEditLock, useVoiceScript } from "../script/useVoiceScript";
+import { VoiceCaptionsButton } from "./VoiceCaptionsButton";
 import { VoiceCarveButton } from "./VoiceCarveButton";
 import { VoiceGenerate } from "./VoiceGenerate";
 import { VoiceIssueList } from "./VoiceIssueList";
@@ -149,6 +150,7 @@ function VoiceoverPanelBody({ projectId }: { projectId: string }) {
           )}
         </div>
         <VoiceCarveButton />
+        <VoiceCaptionsButton />
         {(edits.error ?? actions.error) !== null && (
           <p role="alert" className="m-0 text-xs leading-[15px] text-error">
             {edits.error ?? actions.error}

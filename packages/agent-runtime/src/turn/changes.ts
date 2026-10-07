@@ -23,6 +23,7 @@ const TIMELINE_KIND: Record<string, string> = {
   apply_captions: "captions",
   retime_captions: "captions",
   captions_from_transcript: "captions",
+  captions_from_voiceover: "captions",
   set_audio_fx: "audio",
   set_volume_automation: "audio",
   duck_audio: "audio",

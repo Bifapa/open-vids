@@ -580,6 +580,7 @@ run("timeline checks", () => {
           captions: false,
           graphics: "",
           audio: "",
+          narration: "",
           previewFrame: null,
         },
         {
@@ -616,6 +617,7 @@ run("timeline checks", () => {
           captions: false,
           graphics: "",
           audio: "",
+          narration: "",
           previewFrame: null,
         },
       ],

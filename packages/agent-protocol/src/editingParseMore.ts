@@ -23,6 +23,7 @@ export const MORE_OPERATION_KEYS = {
   set_speed: ["clip", "rate", "keepDuration", "ripple", "rippleScope"],
   retime_captions: ["shift", "scale", "from", "to"],
   captions_from_transcript: ["preset", "track", "clips", "maxWords"],
+  captions_from_voiceover: ["preset", "track", "lines"],
   mount_composition: ["composition", "start", "track", "duration", "provenance"],
   set_color_grade: ["clip", "preset", "intensity", "adjust", "clear"],
   set_audio_fx: ["clip", "preset", "replace", "clear"],
@@ -61,6 +62,28 @@ function readAdjust(value: unknown): ColorAdjust | Field {
 
 function readSignedTime(value: unknown, field: string): number | Field {
   return readNumberIn(value, field, -EDIT_LIMITS.maxTime, EDIT_LIMITS.maxTime);
+}
+
+const VOICE_LINE_ID = /^[A-Za-z0-9_-]{1,64}$/;
+
+/** `lines` of `captions_from_voiceover`: 1..200 distinct voice line ids. */
+function readVoiceLineIds(value: unknown): string[] | Field {
+  if (!Array.isArray(value) || value.length === 0 || value.length > 200) {
+    return { ok: false, message: "lines must be an array of 1–200 voice line ids" };
+  }
+  const ids: string[] = [];
+  for (const entry of value) {
+    if (typeof entry !== "string" || !VOICE_LINE_ID.test(entry)) {
+      return {
+        ok: false,
+        message: "lines must hold voice line ids (1–64 letters, digits, - or _)",
+      };
+    }
+    ids.push(entry);
+  }
+  return new Set(ids).size === ids.length
+    ? ids
+    : { ok: false, message: "lines must not repeat a voice line" };
 }
 
 /** The newer operations; `reader` carries the raw object and collects failures. Undefined when a field failed. */
@@ -122,6 +145,18 @@ export function readMoreOperation(name: EditOperationName, reader: OpReader): Ed
         ...(onTrack !== undefined && { track: onTrack }),
         ...(clips !== undefined && { clips }),
         ...(maxWords !== undefined && { maxWords }),
+      };
+    }
+    case "captions_from_voiceover": {
+      const preset = maybe("preset", (value) => readString(value, "preset", EDIT_LIMITS.idChars));
+      const onTrack = optTrack();
+      const lines = maybe("lines", readVoiceLineIds);
+      if (failures.length > 0) return null;
+      return {
+        op: name,
+        ...(preset !== undefined && { preset }),
+        ...(onTrack !== undefined && { track: onTrack }),
+        ...(lines !== undefined && { lines }),
       };
     }
     case "mount_composition": {

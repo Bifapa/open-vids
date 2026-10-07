@@ -427,6 +427,8 @@ export interface VoiceSynthesisProgress {
   total: number;
   /** The line being generated. */
   lineId: string | null;
+  /** Set while the request waits out the provider's per-minute rate limit: when it asks again (epoch ms). */
+  waitingUntil?: number;
 }
 
 /** `PUT /api/projects/:id/voice/lines/:lineId/take` */

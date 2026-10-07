@@ -45,7 +45,7 @@ export function voiceToolsFor(agent: AgentId, enabled: readonly SpecialistId[]):
 
 const DESCRIPTIONS: Record<VoiceToolName, string> = {
   request_voice_setup: `Ask the user to choose the voice of the narration, and wait for their choice. Call it FIRST whenever the user wants a voiceover or narration: the chat shows the project's current voice ("Use" / "Change"), asks the user to connect a voice provider when none is set up, or opens the voice setup (the provider's voices, sound check). Pass the language of the script, sampleText (the first sentence of the script: every voice the user auditions speaks it, so write it in the script's language) and suggestion (the character you think fits: "warm, mid-30s, calm, unhurried"). The call returns the chosen voice and that voice's script dialect (the tags, pauses, style and length limits the script must follow) — write the script in it. If the user declines or does not answer, no voiceover can be generated: do not try another way, tell the user a voice is needed. The voices belong to the user's own provider account; you never see or send a key.`,
-  generate_voiceover: `Generate the voiceover for a script with the project's voice, paid on the user's own provider account. lines: the script, one entry per spoken line: text (what the captions show), speakerText (what the narrator reads — the model's dialect with its tags; defaults to text), style (delivery for this line, only where the dialect has a style), and id (keep the id of an existing line to keep its takes when its text did not change; omit it for a new line). lineIds: generate only these lines (default: every line without a current take). The call saves the script, checks it against the dialect before anything is paid (a wrong tag, a style the model does not take, a too long line are returned to you to fix — nothing was generated), asks the user to allow the cost, generates the FIRST line as a pilot and shows it to the user in the chat, and only after they press Continue generates the rest in this same call. If they ask for changes you get their note back and nothing else was generated: change the script and call again. Files go to assets/voice/; the result lists each line's file, start and end in the file and duration. Then place every line on the timeline with edit_timeline add_clip { voiceLine: "<id>", start, track } (the clip takes the file and range of the line's selected take) and lower the music under it with duck_audio. Needs the project's voice: call request_voice_setup first.`,
+  generate_voiceover: `Generate the voiceover for a script with the project's voice, paid on the user's own provider account. lines: the lines to add or change, one entry per spoken line: text (what the captions show), speakerText (what the narrator reads — the model's dialect with its tags; defaults to text), style (delivery for this line, only where the dialect has a style), and id (the id of an existing line replaces that line in place and keeps its takes when its text did not change; omit it for a new line, which is appended). The project's script is UPDATED, never replaced: lines you do not pass stay untouched, with their takes and the clips that use them. lineIds: generate only these lines (default: the lines passed in this call that have no current take). The call saves the script, checks it against the dialect before anything is paid (a wrong tag, a style the model does not take, a too long line are returned to you to fix — nothing was generated), asks the user to allow the cost, generates the FIRST line as a pilot and shows it to the user in the chat, and only after they press Continue generates the rest in this same call. If they ask for changes you get their note back and nothing else was generated: change the script and call again. Files go to assets/voice/; the result lists each line's file, start and end in the file and duration. Then place every line on the timeline with edit_timeline add_clip { voiceLine: "<id>", start, track } (the clip takes the file and range of the line's selected take) and lower the music under it with duck_audio. Needs the project's voice: call request_voice_setup first.`,
 };
 
 const stringProperty = (description: string, maxLength?: number) => ({
@@ -81,7 +81,8 @@ const PARAMETERS: Record<VoiceToolName, Record<string, unknown>> = {
         type: "array",
         minItems: 1,
         maxItems: VOICE_LIMITS.lines,
-        description: "The script, in the order it is spoken: one entry per line.",
+        description:
+          "The lines to add or change, in the order they are spoken: one entry per line; other lines of the script stay as they are.",
         items: {
           type: "object",
           properties: {
@@ -111,7 +112,7 @@ const PARAMETERS: Record<VoiceToolName, Record<string, unknown>> = {
         maxItems: VOICE_LIMITS.lines,
         items: { type: "string", maxLength: 64 },
         description:
-          "Generate only these lines (ids of lines in `lines`). Default: every line without a current take.",
+          "Generate only these lines (ids of lines of the script). Default: the lines passed in this call that have no current take.",
       },
     },
     required: ["lines"],
