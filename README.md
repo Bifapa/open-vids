@@ -1,3 +1,7 @@
+https://github.com/user-attachments/assets/f71dac75-51db-4b97-ae47-6906c84f5672
+
+_Made in OpenVids._
+
 # OpenVids
 
 **Website: [openvids.ai](https://openvids.ai)**
@@ -5,10 +9,6 @@
 OpenVids is an open-source desktop video editor for macOS and Windows that you work in together with AI agents. You describe the video in chat; the agents cut footage, build the timeline, add captions and motion graphics, then render the result and check it. Editing, analysis and rendering run on your machine, and the project is a folder of plain files you can open and edit by hand. Agents call the model provider you connect (your prompts, transcripts and sampled video frames go there), Research searches and downloads from the sources the Asset Search policy allows, and OpenVids itself receives only anonymous usage statistics (which you can turn off) and the bug reports you choose to send; see [Usage statistics](#usage-statistics) and [Bug reports](#bug-reports).
 
 It began as a snapshot of [HyperFrames](https://github.com/heygen-com/hyperframes) (HeyGen, Apache-2.0) and is developed here as its own app, with no npm distribution and no OpenVids account or cloud editing backend.
-
-https://github.com/user-attachments/assets/f71dac75-51db-4b97-ae47-6906c84f5672
-
-_Made in OpenVids._
 
 ## What it does
 
