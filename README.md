@@ -6,6 +6,10 @@ OpenVids is an open-source desktop video editor for macOS and Windows that you w
 
 It began as a snapshot of [HyperFrames](https://github.com/heygen-com/hyperframes) (HeyGen, Apache-2.0) and is developed here as its own app, with no npm distribution and no OpenVids account or cloud editing backend.
 
+https://github.com/user-attachments/assets/f71dac75-51db-4b97-ae47-6906c84f5672
+
+_Made in OpenVids._
+
 ## What it does
 
 - **Edit by chat.** A Director agent plans the work and hands it to specialists (Editor, Vision, Motion Designer, Research, Audio). Their edits land in the project files, so the timeline and preview update while they work.
