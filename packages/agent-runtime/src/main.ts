@@ -25,6 +25,8 @@ const app = createRuntimeApp({
   // Provider keys the user entered in OpenVids are read on use, so a key saved by another runtime process applies here too.
   backend: createOmpBackend({
     providerKeys: () => settings.providerApiKeys(),
+    // Read on use too (every turn start reads the catalog): a switch in Settings applies from the next turn, open chats included.
+    extendedContext: async () => (await settings.get()).extendedContext,
     // Sign-ins made in the app are stored (and refreshed) here, never in OMP's database.
     authDbPath: join(settings.dir, "auth.db"),
   }),

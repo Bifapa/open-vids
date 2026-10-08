@@ -53,6 +53,8 @@ export type CatalogServices = {
    * then OMP's credentials are used exactly as before and in-app sign-in is unavailable.
    */
   layered: boolean;
+  /** The user's full-context-windows setting as applied to `settings` (an in-memory override) and the registry. */
+  extendedContext: boolean;
   /** The refresh in flight (they run one after another); null when idle. */
   refreshing: Promise<void> | null;
 };

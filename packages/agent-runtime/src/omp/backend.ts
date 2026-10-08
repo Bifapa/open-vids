@@ -12,6 +12,7 @@ import {
   discoverAuthStorage,
 } from "@oh-my-pi/pi-coding-agent";
 import { SqliteAuthCredentialStore } from "@oh-my-pi/pi-coding-agent/session/auth-storage";
+import { cfgExtendedContext } from "@oh-my-pi/pi-coding-agent/session/context-settings";
 import { cfgDefaultThinkingLevel } from "@oh-my-pi/pi-coding-agent/session/settings";
 import type {
   AgentBackend,
@@ -68,6 +69,14 @@ const PROJECT_FILE_TOOLS = ["read", "grep", "glob", "find", "edit", "write"];
  * is picked up. Applied on top of the user's OMP credentials, in memory only.
  */
 export type ProviderKeySource = () => Promise<ReadonlyMap<string, string>>;
+
+/**
+ * The user's "Full context windows" setting (`AgentSettings.extendedContext`); read on every use like the provider keys.
+ * It replaces OMP's own `extendedContext` for OpenVids as an in-memory override: off, OMP caps a model that has a
+ * premium long-context price tier at that tier's threshold (Claude Haiku 5.5 at 100K of 1M); on, every model gets the
+ * largest window its provider offers. The user's OMP config is never written.
+ */
+export type ExtendedContextSource = () => Promise<boolean>;
 
 /**
  * Makes the runtime overrides of `authStorage` equal `keys`. Runtime overrides live in the SDK's memory only: they are
@@ -194,6 +203,7 @@ class OmpBackend implements AgentBackend {
   constructor(
     private readonly agentDir: string,
     private readonly providerKeys: ProviderKeySource,
+    private readonly extendedContext: ExtendedContextSource,
     /** OpenVids' own auth database (sign-ins made in the app), or null when none was configured. */
     private readonly authDbPath: string | null,
   ) {
@@ -295,8 +305,18 @@ class OmpBackend implements AgentBackend {
     }
   }
 
+  private async storedExtendedContext(fallback: boolean): Promise<boolean> {
+    try {
+      return await this.extendedContext();
+    } catch {
+      return fallback;
+    }
+  }
+
   private async loadServices(): Promise<CatalogServices> {
     const settings = await Settings.loadReadOnly({ cwd: homedir(), agentDir: this.agentDir });
+    const extendedContext = await this.storedExtendedContext(true);
+    cfgExtendedContext.override(settings, extendedContext);
     const authStorage = await discoverAuthStorage(this.agentDir, {
       cwd: homedir(),
       settings,
@@ -330,6 +350,7 @@ class OmpBackend implements AgentBackend {
       syncedAt,
       appliedKeys,
       layered,
+      extendedContext,
       refreshing: null,
     };
     if (services.catalog.models.length === 0 && refreshError) {
@@ -369,6 +390,15 @@ class OmpBackend implements AgentBackend {
       await this.storedProviderKeys(),
     );
     if (keysChanged) services.catalog = createCatalog(services.registry, services.settings);
+    const extendedContext = await this.storedExtendedContext(services.extendedContext);
+    if (extendedContext !== services.extendedContext) {
+      // Rebuilds every model's window from the cached catalog; sessions take the new window at their next prompt,
+      // which binds the model afresh from this registry.
+      services.extendedContext = extendedContext;
+      cfgExtendedContext.override(services.settings, extendedContext);
+      await services.registry.reapplyModelPolicies();
+      services.catalog = createCatalog(services.registry, services.settings);
+    }
     if (options.refreshes !== false) {
       const stale = Date.now() - services.lastRefreshAt >= MODEL_CATALOG_TTL_MS;
       if (keysChanged || (stale && !services.refreshing)) {
@@ -695,6 +725,8 @@ export function createBackend(options?: {
   agentDir?: string;
   /** The API keys OpenVids stores for providers; default: none. */
   providerKeys?: ProviderKeySource;
+  /** The user's full-context-windows setting; default: on. */
+  extendedContext?: ExtendedContextSource;
   /** OpenVids' own auth database for sign-ins made in the app (`<settings dir>/auth.db`); default: none, no sign-in. */
   authDbPath?: string;
 }): AgentBackend {
@@ -710,6 +742,7 @@ export function createBackend(options?: {
   return new OmpBackend(
     path.resolve(agentDir),
     options?.providerKeys ?? (async () => new Map()),
+    options?.extendedContext ?? (async () => true),
     options?.authDbPath ? path.resolve(options.authDbPath) : null,
   );
 }

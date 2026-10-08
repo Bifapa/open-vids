@@ -1059,6 +1059,15 @@ Each finished model call becomes a `usage` backend event (tokens and cost of tha
 `TurnEventWriter` sums them per agent into the cumulative `usage.updated` events. `AgentBackend.contextHash(projectDir)`
 hashes the project context file as the agent sees it, so an edited `AGENTS.md` reopens the sessions.
 
+**Context windows** follow the user's `AgentSettings.extendedContext` (Settings › Agents › Context, "Full context windows",
+default on), never OMP's own `extendedContext`: the backend reads it on every `ensureServices` (each turn start reads the
+catalog) and sets it on the registry's `Settings` as an in-memory override (`cfgExtendedContext.override`; the user's
+`~/.omp/agent/config.yml` is never written), then `registry.reapplyModelPolicies()` rebuilds the windows from the cached
+catalog. Off, OMP caps a model that has a premium long-context price tier at that tier's threshold (`cost.longContext.inputThreshold`:
+Claude Haiku 5.5 100K of 1M, Codex GPT-5.6 272K) and Codex GPT-6/6.1 stay at 272K, so compaction runs before a request
+costs more; on, every model gets the largest window its provider offers. A session binds its model afresh at every
+prompt, so open chats take the new window from their next turn.
+
 ## Develop
 
 ```bash

@@ -622,6 +622,10 @@ export function parseUpdateAgentSettings(body: unknown): Parsed<UpdateAgentSetti
     if (!autonomy.ok) return autonomy;
     value.autonomy = autonomy.value;
   }
+  if (body.extendedContext !== undefined) {
+    if (typeof body.extendedContext !== "boolean") return fail("extendedContext must be a boolean");
+    value.extendedContext = body.extendedContext;
+  }
   return Object.keys(value).length > 0 ? { ok: true, value } : fail("nothing to update");
 }
 

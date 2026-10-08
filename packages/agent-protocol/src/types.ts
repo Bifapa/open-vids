@@ -155,6 +155,14 @@ export interface AgentSettings {
   /** Execution Quality of chats that have not chosen their own. */
   executionQuality: ExecutionQuality;
   autonomy: AutonomySettings;
+  /**
+   * Full context windows (Settings → Agents → Context). `true`: every model runs with the largest window its provider
+   * offers (Claude Haiku 5.5 1M, Codex GPT-5.6 1M), and a request past a model's standard-price threshold is billed at
+   * its long-context rate. `false`: a model with a premium long-context tier is capped at that tier's threshold (Haiku
+   * 5.5 100K, GPT-5.6 272K), so the chat is compacted before a request reaches the higher price. Applies from the next
+   * turn, also in chats that are open.
+   */
+  extendedContext: boolean;
 }
 
 /** Per-chat specialist overrides; a missing entry means "use the global default". */

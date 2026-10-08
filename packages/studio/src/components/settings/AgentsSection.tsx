@@ -405,6 +405,22 @@ export function AgentsSection() {
           />
         ))}
       </SettingsGroup>
+      <SettingsGroup label={t("settings.agents.group.context")}>
+        <SettingsRow
+          label={t("settings.agents.extendedContext")}
+          hint={t(
+            settings.extendedContext
+              ? "settings.agents.extendedContext.on"
+              : "settings.agents.extendedContext.off",
+          )}
+        >
+          <Toggle
+            label={t("settings.agents.extendedContext")}
+            checked={settings.extendedContext}
+            onCommit={(extendedContext) => commit({ extendedContext })}
+          />
+        </SettingsRow>
+      </SettingsGroup>
       <SettingsGroup
         label={t("settings.studio.ag.mayUse")}
         note={t("settings.studio.ag.mayUseNote")}

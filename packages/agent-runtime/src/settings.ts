@@ -47,6 +47,7 @@ export function defaultAgentSettings(): AgentSettings {
     },
     executionQuality: structuredClone(DEFAULT_EXECUTION_QUALITY),
     autonomy: { ...DEFAULT_AUTONOMY_SETTINGS },
+    extendedContext: true,
   };
 }
 
@@ -73,6 +74,7 @@ function applyUpdate(current: AgentSettings, update: UpdateAgentSettingsRequest)
     jev: { ...current.jev, ...update.jev },
     executionQuality: update.executionQuality ?? current.executionQuality,
     autonomy: { ...current.autonomy, ...update.autonomy },
+    extendedContext: update.extendedContext ?? current.extendedContext,
   };
 }
 

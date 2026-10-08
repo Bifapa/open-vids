@@ -341,6 +341,7 @@ export interface UpdateAgentSettingsRequest {
   executionQuality?: ExecutionQuality;
   /** Fields omitted keep their value. */
   autonomy?: Partial<AutonomySettings>;
+  extendedContext?: boolean;
 }
 
 /** Stores (string) or removes (null) the Jev API key. The response never contains the key. */
