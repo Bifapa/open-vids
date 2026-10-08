@@ -1,8 +1,8 @@
+# OpenVids
+
 https://github.com/user-attachments/assets/f71dac75-51db-4b97-ae47-6906c84f5672
 
 _Made in OpenVids._
-
-# OpenVids
 
 **Website: [openvids.ai](https://openvids.ai)**
 
